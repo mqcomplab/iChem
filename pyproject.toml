@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "iChem"
+version = "0.1"
+description = "Module to use iSIM (instant Similarity) to perform typical Cheminformatics tools: clustering, diversity selection, similarity calculations, activity cliff quantification, chemical space visualization, etc."
+readme = "README.md"
+requires-python = ">=3.7"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Your Name", email = "your_email@example.com" }
+]
+dependencies = [
+    "numpy",
+    "matplotlib",
+    "rdkit",
+    "scipy",
+    "seaborn",
+    "scikit-learn"
+]
+
+[project.urls]
+Homepage = "https://github.com/your-repo-url"
+
+[tool.setuptools.packages.find]
+where = ["."]
