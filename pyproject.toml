@@ -13,7 +13,7 @@ authors = [
     { name = "Your Name", email = "your_email@example.com" }
 ]
 dependencies = [
-    "numpy",
+    "numpy>=2.0",
     "matplotlib",
     "rdkit",
     "scipy",
