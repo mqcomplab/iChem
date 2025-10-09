@@ -1,3 +1,3 @@
 import numpy as np
-import pandas as pd
-from .iSIM import calculate_isim
+from .isim import calculate_isim
+from .comp_sim import calculate_comp_sim, calculate_outlier, calculate_medoid
