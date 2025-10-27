@@ -44,22 +44,22 @@ def test_pairwise_average_real():
     fps = utils.real_fps(smiles)
     fps = utils.minmax_norm(fps)
     value = utils.pairwise_average_real(fps, n_ary="RR")
-    assert value == pytest.approx(0.072021149)
+    assert value == pytest.approx(0.071182)
 
     value = utils.pairwise_average_real(fps, n_ary="SM")
-    assert value == pytest.approx(0.7232780885827678)
+    assert value == pytest.approx(0.7252999199)
 
     jt_value = utils.pairwise_average_real(fps, n_ary="JT")
-    assert jt_value == pytest.approx(0.48180844, abs = 0.05)
+    assert jt_value == pytest.approx(0.47739, abs = 0.05)
 
 # Test the real_fps function and normalization
 def test_real_fps():
     # Calculate the real fingerprints
     smiles = pd.read_csv('tests/data/logP_data.csv')
     smiles = smiles['SMILES']
-    fps = utils.real_fps(smiles)
+    fps, invalid_smiles = utils.real_fps(smiles, return_invalid = True)
     assert type(fps) == np.ndarray
-    assert fps.shape[0] == 119
+    assert fps.shape[0] + len(invalid_smiles) == 119
     assert np.nan not in fps
 
     # Calculate the minmax normalization

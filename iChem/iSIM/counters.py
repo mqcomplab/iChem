@@ -1,5 +1,5 @@
 import numpy as np
-from _input_check import input_check
+from ._input_check import input_check
 
 def calculate_counters(data, n_objects = None) -> dict:
     """Calculate 1-similarity, 0-similarity, and dissimilarity counters

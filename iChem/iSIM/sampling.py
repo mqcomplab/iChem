@@ -1,4 +1,4 @@
-from iChem.iSIM.iSIM import calculate_comp_sim
+from .comp_sim import calculate_comp_sim
 import numpy as np
 
 def medoid_sampling(fingerprints = None, n_ary = 'JT', percentage = 10, comp_sim = None):
@@ -183,11 +183,11 @@ def quota_sampling(fingerprints = None, n_ary = 'JT', percentage = 10, n_bins = 
     for i in range(n_bins - 1):
         low = min + i * step
         up = min + (i + 1) * step
-        ind = indices[(comp_sim >= low) * (comp_sim < up)]
-        bin_comp_sim = comp_sim[ind]
+        ind = indices[(comp_sim >= low) & (comp_sim < up)]
+        bin_comp_sim = [comp_sim[j] for j in ind]
         bins.append(ind[np.argsort(bin_comp_sim)])
-    ind = indices[(comp_sim >= up) * (comp_sim <= max)]
-    bin_comp_sim = comp_sim[ind]
+    ind = indices[(comp_sim >= up) & (comp_sim <= max)]
+    bin_comp_sim = [comp_sim[j] for j in ind]
     bins.append(ind[np.argsort(bin_comp_sim)])
 
     # Sample the objects from each bin

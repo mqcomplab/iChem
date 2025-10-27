@@ -1,1 +1,4 @@
 iChem
+img
+scripts
+tests

@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
-from iChem.iSIM import calculate_isim
-from iChem.iSIM.real import pair_jt, pair_rr, pair_sm
+from .iSIM import calculate_isim
+from .iSIM.real import pair_jt, pair_rr, pair_sm
 from rdkit import Chem, DataStructs
 from rdkit.Chem import AllChem, Descriptors
 
@@ -9,7 +9,7 @@ from rdkit.Chem import AllChem, Descriptors
 This module contains utility functions for the iChem package regarding fingerprint generation, and 
 pairwise similarity calculations using RDKit functions.
 """
-def binary_fps(smiles: list, fp_type: str = 'RDKIT', n_bits: int = 2048):
+def binary_fps(smiles: list, fp_type: str = 'RDKIT', n_bits: int = 2048, return_invalid: bool = True) -> np.ndarray:
     """
     This function generates binary fingerprints for the dataset.
     
@@ -17,9 +17,11 @@ def binary_fps(smiles: list, fp_type: str = 'RDKIT', n_bits: int = 2048):
     smiles: list of SMILES strings
     fp_type: type of fingerprint to generate ['RDKIT', 'ECFP4', 'ECFP6', or 'MACCS']
     n_bits: number of bits for the fingerprint
+    return_invalid: whether to return invalid SMILES indices
     
     Returns:
     fingerprints: numpy array of fingerprints
+    and list of invalid SMILES indices if return_invalid is True
     """
     # Generate the fingerprints
     if fp_type == 'RDKIT':
@@ -39,24 +41,32 @@ def binary_fps(smiles: list, fp_type: str = 'RDKIT', n_bits: int = 2048):
         exit(0)
 
     fingerprints = []
-    for smi in smiles:
+    invalid_smiles = []
+    for k, smi in enumerate(smiles):
         # Generate the mol object
         try:
           mol = Chem.MolFromSmiles(smi)
         except:
           print('Invalid SMILES: ', smi)
+          invalid_smiles.append(k)
           exit(0)
 
-        # Generate the fingerprint and append to the list
-        fingerprint = np.array([])
-        generate_fp(mol, fingerprint)
-        fingerprints.append(fingerprint)
-    
+        try:
+            # Generate the fingerprint and append to the list
+            fingerprint = np.array([])
+            generate_fp(mol, fingerprint)
+            fingerprints.append(fingerprint)
+        except:
+            print('Error generating fingerprint for SMILES: ', smi)
+            invalid_smiles.append(k)
+
     fingerprints = np.array(fingerprints)
+    if return_invalid:
+        return fingerprints, invalid_smiles
+    else:
+        return fingerprints
 
-    return fingerprints
-
-def real_fps(smiles):
+def real_fps(smiles, return_invalid: bool = False):
     """
     This function generates real number fingerprints for the dataset based on RDKit descriptors.
     Skips corrupted smiles strings. 
@@ -68,31 +78,31 @@ def real_fps(smiles):
     fingerprints: numpy array of fingerprints
     """
     fps = []
-    for smi in smiles:
+    invalid_smiles = []
+    for k, smi in enumerate(smiles):
         # Generate the mol object
         try:
-          mol = Chem.MolFromSmiles(smi)
-        except:
-          print('Invalid SMILES: ', smi)
-          exit(0)
-
-        # Generate the fingerprint and append to the list
-        des = []
-        for nm, fn in Descriptors._descList:
-            try: 
-                val = fn(mol)
+            mol = Chem.MolFromSmiles(smi)
+            try:
+                des = []
+                for nm, fn in Descriptors._descList:
+                    val = fn(mol)
+                    des.append(val)
+                fps.append(des)
             except:
                 print('Error computing descriptor: ', nm)
-                val = 'NaN'
-            des.append(val)
+                invalid_smiles.append(k)
+                continue             
+        except:
+            print('Invalid SMILES: ', smi)
+            invalid_smiles.append(k)
 
-        fps.append(des)
-    
-    # Drop columns with NaN values
+    # Convert to numpy array
     fps = np.array(fps)
-    fps = fps[:, ~np.isnan(fps).any(axis = 0)]
-    
-    return fps
+    if return_invalid:
+        return fps, invalid_smiles
+    else:
+        return fps
 
 def minmax_norm(fps):
     """

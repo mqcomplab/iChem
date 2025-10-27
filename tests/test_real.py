@@ -1,7 +1,7 @@
 import numpy as np
 import unittest
 from iChem.iSIM.real import pair_jt, pair_rr, pair_sm, process_matrix, calculate_isim_real
-from iSIM.utils import minmax_norm, real_fps
+from iChem.utils import minmax_norm, real_fps
 import pandas as pd
 
 class TestPairwiseSimilarityFunctions(unittest.TestCase):
@@ -66,9 +66,9 @@ class TestRealISIMFunctions(unittest.TestCase):
         iSIM_rr = calculate_isim_real(self.fingerprints, n_ary='RR')
         iSIM_sm = calculate_isim_real(self.fingerprints, n_ary='SM')
 
-        expected_iSIM_jt = 0.48180844
-        expected_iSIM_rr = 0.072021149
-        expected_iSIM_sm = 0.7232780885827678
+        expected_iSIM_jt = 0.477398141416
+        expected_iSIM_rr = 0.071182
+        expected_iSIM_sm = 0.7252999199
 
         self.assertAlmostEqual(iSIM_jt, expected_iSIM_jt, places=6)
         self.assertAlmostEqual(iSIM_rr, expected_iSIM_rr, places=6)

@@ -7,19 +7,24 @@ name = "iChem"
 version = "0.1"
 description = "Module to use iSIM (instant Similarity) to perform typical Cheminformatics tools: clustering, diversity selection, similarity calculations, activity cliff quantification, chemical space visualization, etc."
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.12"
 license = { file = "LICENSE" }
 authors = [
-    { name = "Your Name", email = "your_email@example.com" }
+    { name = "Kenneth Lopez", email = "klopezperez@ufl.edu" }
 ]
 dependencies = [
     "numpy>=2.0",
     "matplotlib",
-    "rdkit",
-    "scipy",
+    "pandas>=2.0.0",
+    "scipy>=1.11.0",
     "seaborn",
-    "scikit-learn"
+    "scikit-learn",
+    "numexpr>=2.8.0"
 ]
+
+[project.optional-dependencies]
+rdkit = ["rdkit"]
+all = ["rdkit"]
 
 [project.urls]
 Homepage = "https://github.com/your-repo-url"

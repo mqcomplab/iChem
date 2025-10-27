@@ -1,5 +1,5 @@
 import numpy as np
-from isim import calculate_isim
+from .isim import calculate_isim
 
 def calculate_medoid(fingerprints, n_ary = 'JT') -> int:
     """Calculate the medoid in a dataset based on complementary similarity.

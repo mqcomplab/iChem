@@ -13,8 +13,8 @@
 
 import numpy as np
 
-from counters import calculate_counters
-from _input_check import input_check
+from .counters import calculate_counters
+from ._input_check import input_check
 
 __all__ = ['calculate_isim', 
            'calculate_comp_sim',
