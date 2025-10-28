@@ -1,9 +1,9 @@
-import numpy as np
-import pandas as pd
+import numpy as np # type: ignore
+import pandas as pd # type: ignore
 from .iSIM import calculate_isim
 from .iSIM.real import pair_jt, pair_rr, pair_sm
-from rdkit import Chem, DataStructs
-from rdkit.Chem import AllChem, Descriptors
+from rdkit import Chem, DataStructs # type: ignore
+from rdkit.Chem import AllChem, Descriptors # type: ignore
 
 """
 This module contains utility functions for the iChem package regarding fingerprint generation, and 
@@ -53,7 +53,7 @@ def binary_fps(smiles: list, fp_type: str = 'RDKIT', n_bits: int = 2048, return_
 
         try:
             # Generate the fingerprint and append to the list
-            fingerprint = np.array([])
+            fingerprint = np.array([], dtype=np.uint8)
             generate_fp(mol, fingerprint)
             fingerprints.append(fingerprint)
         except:
