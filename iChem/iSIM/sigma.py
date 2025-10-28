@@ -1,6 +1,6 @@
-import numpy as np
-import pandas as pd
-from joblib import Parallel, delayed, parallel_backend
+import numpy as np # type: ignore
+import pandas as pd # type: ignore
+from joblib import Parallel, delayed, parallel_backend # type: ignore
 from iChem.iSIM.sampling import stratified_sampling
 from iChem.utils import pairwise_average, rdkit_pairwise_sim
 
@@ -142,7 +142,7 @@ def stratified_sigma(fps, n = 50, n_ary = 'JT'):
     """
 
     # Sample the representative molecules 
-    indexes_strat = stratified_sampling(fps, n_ary = n_ary, percentage = n*100/len(fps))
+    indexes_strat = stratified_sampling(fps, n_ary = n_ary, n_sample = n)
     fps_strat = fps[indexes_strat]
 
     if n_ary == 'JT':
