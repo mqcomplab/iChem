@@ -1,12 +1,12 @@
 r"""Pretty printing"""
 
 from pathlib import Path
-import numpy as np
+import numpy as np # type: ignore
 import typing as tp
 import os
 import multiprocessing as mp
 
-from rich.console import Console
+from rich.console import Console # type: ignore
 
 from ._memory import get_peak_memory_gib
 

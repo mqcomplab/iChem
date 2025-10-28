@@ -1,6 +1,6 @@
 r"""Command line interface entrypoints"""
 
-import typing_extensions as tpx
+import typing_extensions as tpx # type: ignore
 import typing as tp
 import math
 import shutil
@@ -12,8 +12,8 @@ import multiprocessing as mp
 from typing import Annotated
 from pathlib import Path
 
-import numpy as np
-from typer import Typer, Argument, Option, Abort, Context, Exit
+import numpy as np # type: ignore
+from typer import Typer, Argument, Option, Abort, Context, Exit # type: ignore
 
 from ._memory import launch_monitor_rss_daemon, get_peak_memory
 from ._timer import Timer
@@ -121,7 +121,7 @@ def _summary_plot(
     console = get_console(silent=not verbose)
     # Imports may take a bit of time since sklearn is slow, so start the spinner here
     with console.status("[italic]Analyzing clusters...[/italic]", spinner="dots"):
-        import matplotlib.pyplot as plt
+        import matplotlib.pyplot as plt # type: ignore
 
         from bblean.smiles import load_smiles
         from bblean.analysis import cluster_analysis
@@ -259,7 +259,7 @@ def _run(
 ) -> None:
     r"""Run standard, serial BitBIRCH clustering over `*.npy` fingerprint files"""
     # TODO: Remove code duplication with multiround
-    import numpy as np
+    import numpy as np # type: ignore
     from bblean._console import get_console
     from bblean.fingerprints import _get_fps_file_num
 
@@ -666,8 +666,8 @@ def _fps_from_smiles(
     In order to use the memory efficient BitBIRCH u8 algorithm you should keep the
     defaults: --dtype=uint8 and --pack
     """
-    from rdkit import Chem
-    from rdkit.Chem import MolFromSmiles
+    from rdkit import Chem # type: ignore
+    from rdkit.Chem import MolFromSmiles # type: ignore
 
     from bblean._console import get_console
     from bblean.utils import _num_avail_cpus

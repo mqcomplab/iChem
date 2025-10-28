@@ -1,4 +1,4 @@
-import numpy as np
+import numpy as np # type: ignore
 
 from ..bblean import pack_fingerprints, unpack_fingerprints
 from ..utils import binary_fps
@@ -70,18 +70,18 @@ class LibChem:
         
     def _calculate_iSIM(
             self,
-            n_ary: str = 'JT',
+            sim_index: str = 'JT',
     ) -> np.array:
         """Calculate iSIM similarity matrix from fingerprints"""
         if self.fps_packed is None:
             raise ValueError("Fingerprints not loaded or generated.")
-        
-        self.iSIM = calculate_isim(unpack_fingerprints(self.fps_packed), n_ary=n_ary)   
+
+        self.iSIM = calculate_isim(unpack_fingerprints(self.fps_packed), n_ary=sim_index)
 
     def _calculate_iSIM_sigma(
             self,
             n_sigma_samples: int = 50,
-            n_ary: str = 'JT',
+            sim_index: str = 'JT',
     ) -> np.array:
         """Calculate iSIM similarity matrix with sigma adjustment from fingerprints"""
         if self.fps_packed is None:
@@ -90,28 +90,28 @@ class LibChem:
         self.iSIM_sigma = stratified_sigma(
             unpack_fingerprints(self.fps_packed), 
             n = n_sigma_samples, 
-            n_ary = n_ary
+            n_ary = sim_index
         )
         self.iSIM_sigma = self.iSIM_sigma
 
     def get_iSIM(
             self,
-            n_ary: str = 'JT',
+            sim_index: str = 'JT',
     ) -> np.array:
         """Retrieve the calculated iSIM similarity matrix"""
         if not hasattr(self, 'iSIM'):
-            self._calculate_iSIM(self, n_ary=n_ary)
+            self._calculate_iSIM(sim_index=sim_index)
 
         return self.iSIM
     
     def get_iSIM_sigma(
             self,
             n_sigma_samples: int = 50,
-            n_ary: str = 'JT',
+            sim_index: str = 'JT',
     ) -> float:
         """Retrieve the calculated iSIM sigma value"""
         if not hasattr(self, 'iSIM_sigma'):
-            self._calculate_iSIM_sigma(self, n_sigma_samples=n_sigma_samples, n_ary=n_ary)
+            self._calculate_iSIM_sigma(n_sigma_samples=n_sigma_samples, sim_index=sim_index)
 
         return self.iSIM_sigma
 

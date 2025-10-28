@@ -9,7 +9,7 @@ import dataclasses
 import multiprocessing as mp
 import os
 
-import numpy as np
+import numpy as np # type: ignore
 
 from ._memory import system_mem_gib
 from .utils import _cpu_name

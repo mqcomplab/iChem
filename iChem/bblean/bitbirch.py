@@ -47,7 +47,7 @@
 # ./LICENSES/GPL-3.0-only.txt.  If not, see <http://www.gnu.org/licenses/gpl-3.0.html>.
 r"""BitBirch 'Lean' class for fast, memory-efficient O(N) clustering"""
 from __future__ import annotations  # Stringize type annotations for no runtime overhead
-import typing_extensions as tpx
+import typing_extensions as tpx # type: ignore
 import os
 import random
 from pathlib import Path
@@ -57,8 +57,8 @@ from typing import cast
 from collections import defaultdict
 from weakref import WeakSet
 
-import numpy as np
-from numpy.typing import NDArray, DTypeLike
+import numpy as np # type: ignore
+from numpy.typing import NDArray, DTypeLike # type: ignore
 
 from ._memory import _mmap_file_and_madvise_sequential, _ArrayMemPagesManager
 from ._merges import get_merge_accept_fn, MergeAcceptFunction, BUILTIN_MERGES
@@ -941,7 +941,7 @@ class BitBirch:
         check_valid: bool = True,
     ) -> None:
         r"""Dump the cluster assignments to a ``*.csv`` file"""
-        import pandas as pd  # Hide pandas import since it is heavy
+        import pandas as pd  # type: ignore[import]
 
         path = Path(path)
         if isinstance(smiles, str):
@@ -1235,7 +1235,7 @@ def _get_array_iterable(
 
 # NOTE: In practice this branch is never used, it could probably safely be deleted
 def _iter_sparse(X: tp.Any) -> tp.Iterator[NDArray[np.uint8]]:
-    import scipy.sparse  # Hide this import since scipy is heavy
+    import scipy.sparse  # type: ignore[import]
 
     if not scipy.sparse.issparse(X):
         raise ValueError(f"Input of type {type(X)} is not supported")

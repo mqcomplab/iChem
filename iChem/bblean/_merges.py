@@ -1,7 +1,7 @@
 r"""Merging criteria for BitBIRCH clustering"""
 
-import numpy as np
-from numpy.typing import NDArray
+import numpy as np # type: ignore
+from numpy.typing import NDArray # type: ignore
 
 # NOTE: jt_isim_from_sum is equivalent to jt_isim_diameter_compl_from_sum
 from .similarity import jt_isim_from_sum, jt_isim_radius_compl_from_sum

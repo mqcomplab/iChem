@@ -5,10 +5,10 @@ from collections import defaultdict
 import dataclasses
 import typing as tp
 
-import pandas as pd
-import numpy as np
-from numpy.typing import NDArray
-from rdkit.Chem.Scaffolds import MurckoScaffold
+import pandas as pd # type: ignore
+import numpy as np # type: ignore
+from numpy.typing import NDArray # type: ignore
+from rdkit.Chem.Scaffolds import MurckoScaffold # type: ignore
 
 from ._config import DEFAULTS
 from .similarity import jt_isim

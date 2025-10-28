@@ -3,13 +3,13 @@ r"""Utilites for manipulating fingerprints and fingerprint files"""
 import warnings
 import dataclasses
 from pathlib import Path
-from numpy.typing import NDArray, DTypeLike
-import numpy as np
+from numpy.typing import NDArray, DTypeLike # type: ignore
+import numpy as np # type: ignore
 import typing as tp
 import multiprocessing.shared_memory as shmem
 
-from rich.console import Console
-from rdkit.Chem import rdFingerprintGenerator, MolFromSmiles, SanitizeFlags, SanitizeMol
+from rich.console import Console # type: ignore
+from rdkit.Chem import rdFingerprintGenerator, MolFromSmiles, SanitizeFlags, SanitizeMol # type: ignore
 
 from ._config import DEFAULTS
 from ._console import get_console
@@ -75,7 +75,7 @@ def make_fake_fingerprints(
     dtype: DTypeLike = np.uint8,
 ) -> NDArray[np.uint8]:
     r"""Make random fingerprints with statistics similar to (some) real databases"""
-    import scipy.stats  # Hide this import since scipy is heavy
+    import scipy.stats  # type: ignore
 
     if n_features < 1 or n_features % 8 != 0:
         raise ValueError("n_features must be a multiple of 8, and greater than 0")

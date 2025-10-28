@@ -52,9 +52,9 @@ import typing as tp
 import multiprocessing as mp
 from pathlib import Path
 
-import numpy as np
-from numpy.typing import NDArray
-from rich.console import Console
+import numpy as np # type: ignore
+from numpy.typing import NDArray # type: ignore
+from rich.console import Console # type: ignore
 
 from ._console import get_console
 from ._timer import Timer

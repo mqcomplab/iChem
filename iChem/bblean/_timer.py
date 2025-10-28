@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import time
 
-from rich.console import Console
+from rich.console import Console # type: ignore
 
 
 class Timer:

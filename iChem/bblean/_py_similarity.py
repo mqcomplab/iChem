@@ -2,8 +2,8 @@ r"""Fallback python implementation of molecular similarity calculators"""
 
 import warnings
 
-from numpy.typing import NDArray
-import numpy as np
+from numpy.typing import NDArray # type: ignore
+import numpy as np # type: ignore
 
 from .utils import min_safe_uint
 from .fingerprints import unpack_fingerprints, pack_fingerprints

@@ -1,14 +1,14 @@
 r"""Plotting and visualization convenience functions"""
 
-from numpy.typing import NDArray
+from numpy.typing import NDArray # type: ignore
 import typing as tp
 
-import numpy as np
-import matplotlib.pyplot as plt
-from rdkit import Chem
-from rdkit.Chem import Draw
-from sklearn.manifold import TSNE
-from sklearn.preprocessing import StandardScaler
+import numpy as np # type: ignore
+import matplotlib.pyplot as plt # type: ignore
+from rdkit import Chem  # type: ignore
+from rdkit.Chem import Draw # type: ignore
+from sklearn.manifold import TSNE # type: ignore
+from sklearn.preprocessing import StandardScaler # type: ignore
 
 from .utils import batched
 from .analysis import ClusterAnalysis
