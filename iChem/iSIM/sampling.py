@@ -1,7 +1,7 @@
 from .comp_sim import calculate_comp_sim
-import numpy as np
+import numpy as np # type: ignore
 
-def medoid_sampling(fingerprints = None, n_ary = 'JT', percentage = 10, comp_sim = None):
+def medoid_sampling(fingerprints = None, n_ary = 'JT', n_sample = 10, comp_sim = None):
     """
     This function samples a percentage of the objects with the lowest complementarity similarity, the medoids.
     
@@ -22,11 +22,11 @@ def medoid_sampling(fingerprints = None, n_ary = 'JT', percentage = 10, comp_sim
     
     # Sort the complementarity similarities and get the indexes of the sorted array
     indexes = np.argsort(comp_sim)
-    indexes = indexes[:int(len(indexes)*percentage/100)]
+    indexes = indexes[:n_sample]
     
     return indexes
 
-def outlier_sampling(fingerprints = None, n_ary = 'JT', percentage = 10, comp_sim = None):
+def outlier_sampling(fingerprints = None, n_ary = 'JT', n_sample = 10, comp_sim = None):
     """
     This function samples a percentage of the objects with the highest complementarity similarity, the outliers.
     
@@ -46,11 +46,11 @@ def outlier_sampling(fingerprints = None, n_ary = 'JT', percentage = 10, comp_si
 
     # Sort the complementarity similarities and get the indexes of the sorted array
     indexes = np.argsort(comp_sim)
-    indexes = indexes[-int(len(indexes)*percentage/100):]
+    indexes = indexes[-n_sample:]
     
     return indexes
 
-def extremes_sampling(fingerprints = None, n_ary = 'JT', percentage = 10, comp_sim = None):
+def extremes_sampling(fingerprints = None, n_ary = 'JT', n_sample = 10, comp_sim = None):
     """
     This function samples a percentage of the objects with the highest and lowest complementarity similarity, medoids and outliers.
     
@@ -62,8 +62,8 @@ def extremes_sampling(fingerprints = None, n_ary = 'JT', percentage = 10, comp_s
     Returns:
     indexes: indexes of the sampled objects
     """
-    # Define the percentage of extremes to sample
-    percentage = percentage/2
+    # Define the n extremes to sample
+    n_half = int(n_sample/2)
 
     # Compute the complementarity similarity matrix, changes to see if comp_sim is provided
     if comp_sim is None:
@@ -73,11 +73,11 @@ def extremes_sampling(fingerprints = None, n_ary = 'JT', percentage = 10, comp_s
     
     # Sort the complementarity similarities and get the indexes of the sorted array
     indexes = np.argsort(comp_sim)
-    indexes = np.concatenate((indexes[:int(len(indexes)*percentage/100)], indexes[-int(len(indexes)*percentage/100):]))
-    
+    indexes = np.concatenate((indexes[:n_half], indexes[-n_half:]))
+
     return indexes
 
-def stratified_sampling(fingerprints = None, n_ary = 'JT', percentage = 10, strata = None, comp_sim = None):
+def stratified_sampling(fingerprints = None, n_ary = 'JT', n_sample = 10, strata = None, comp_sim = None):
     """
     This function separates the objects in strata according to their complementarity similarity and it samples a percentage of the objects
     in each batch to add up to the desired total percentage. If objects to sample in each stratum are not equal lowest complementary
@@ -105,13 +105,10 @@ def stratified_sampling(fingerprints = None, n_ary = 'JT', percentage = 10, stra
 
     # Define the number of batches if not specified
     if not strata:
-        strata = int(n_objects*percentage/100)
+        strata = n_sample
 
     # Split the data in batches
     strata = np.array_split(indexes, strata)    
-        
-    # Define the total number of objects to sample and the number of objects to sample in each batch
-    n_sample = int(n_objects*percentage/100)
 
     # Check if the number of objects to sample is not less than the number of batches
     if n_sample < len(strata):
