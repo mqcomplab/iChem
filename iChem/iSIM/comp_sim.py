@@ -1,4 +1,4 @@
-import numpy as np
+import numpy as np # type: ignore
 from .isim import calculate_isim
 
 def calculate_medoid(fingerprints, n_ary = 'JT') -> int:
