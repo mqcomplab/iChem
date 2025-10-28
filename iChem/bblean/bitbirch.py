@@ -60,14 +60,14 @@ from weakref import WeakSet
 import numpy as np
 from numpy.typing import NDArray, DTypeLike
 
-from bblean._memory import _mmap_file_and_madvise_sequential, _ArrayMemPagesManager
-from bblean._merges import get_merge_accept_fn, MergeAcceptFunction, BUILTIN_MERGES
-from bblean.utils import min_safe_uint
-from bblean.fingerprints import (
+from ._memory import _mmap_file_and_madvise_sequential, _ArrayMemPagesManager
+from ._merges import get_merge_accept_fn, MergeAcceptFunction, BUILTIN_MERGES
+from .utils import min_safe_uint
+from .fingerprints import (
     pack_fingerprints,
     _get_fingerprints_from_file_seq,
 )
-from bblean.similarity import (
+from .similarity import (
     _jt_sim_arr_vec_packed,
     jt_most_dissimilar_packed,
     centroid_from_sum,
@@ -81,7 +81,7 @@ else:
         # now if this fails, and don't expose it
         from bblean._cpp_similarity import unpack_fingerprints as _unpack_fingerprints  # type: ignore # noqa
     except ImportError:
-        from bblean.fingerprints import unpack_fingerprints as _unpack_fingerprints
+        from .fingerprints import unpack_fingerprints as _unpack_fingerprints
 
 __all__ = ["BitBirch"]
 

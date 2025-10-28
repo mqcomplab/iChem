@@ -1,5 +1,6 @@
 r"""Pretty printing"""
 
+from pathlib import Path
 import numpy as np
 import typing as tp
 import os
@@ -7,7 +8,7 @@ import multiprocessing as mp
 
 from rich.console import Console
 
-from ._memory import get_peak_memory, PeakMemoryStats
+from ._memory import get_peak_memory_gib
 
 
 class BBConsole(Console):
@@ -25,48 +26,26 @@ class BBConsole(Console):
         self.print()
         self.print()
         self.print(
-            r"""If you find this software useful please cite the following articles:
+            r"""BitBirch-Lean is developed by the [bold]Miranda-Quintana Lab[/bold] https://github.com/mqcomplab
+If you find this software useful please cite the following articles:
     [yellow]•[/yellow] [italic]BitBIRCH: efficient clustering of large molecular libraries[/italic]:
         https://doi.org/10.1039/D5DD00030K
     [yellow]•[/yellow] [italic]BitBIRCH Clustering Refinement Strategies[/italic]:
         https://doi.org/10.1021/acs.jcim.5c00627
     [yellow]•[/yellow] [italic]BitBIRCH-Lean[/italic]:
-        TO-BE-ADDED"""  # noqa
+        (preprint) https://www.biorxiv.org/content/10.1101/2025.10.22.684015v1"""  # noqa
         )
 
-    def print_peak_mem(self, num_processes: int, indent: bool = True) -> None:
-        stats = get_peak_memory(num_processes)
-        if stats is None:
-            self.print("[Peak RAM not tracked for non-Unix systems]")
+    def print_peak_mem(self, out_dir: Path, indent: bool = True) -> None:
+        peak_mem_gib = get_peak_memory_gib(out_dir)
+        if peak_mem_gib is None:
             return
-        return self.print_peak_mem_raw(stats, indent)
-
-    def print_peak_mem_raw(self, stats: PeakMemoryStats, indent: bool = True) -> None:
-        if indent:
-            indent_str = " " * 4
-            indent_str_2 = 2 * indent_str
-        else:
-            indent_str = ""
-            indent_str_2 = " " * 4
-        self.print(
-            "".join(
-                (
-                    indent_str,
-                    "- Peak RAM use:\n",
-                    indent_str_2,
-                    f"- Main proc.: {stats.self_gib:.4f} GiB",
-                )
-            )
-        )
-        if stats.child_gib is not None:
-            self.print(
-                "".join(
-                    (indent_str_2, f"- Max of child procs.: {stats.child_gib:.4f} GiB")
-                )
-            )
+        indent_str = " " * 4 if indent else ""
+        self.print(f"{indent_str}- Peak RAM use: {peak_mem_gib:.4f} GiB")
 
     def print_config(self, config: dict[str, tp.Any]) -> None:
         num_fps_loaded = np.array(config["num_fps_loaded"])
+        total_fps_num = num_fps_loaded.sum()
         with np.printoptions(formatter={"int": "{:,}".format}, threshold=10):
             num_fps_str = str(num_fps_loaded)[1:-1]
             self.print(
@@ -76,19 +55,31 @@ class BBConsole(Console):
                 f"- Threshold: {config['threshold']}\n"
                 f"- Num. files loaded: {len(config['input_files']):,}\n"
                 f"- Num. fingerprints loaded for each file: {num_fps_str}\n"
-                f"- Use mmap: {config['use_mmap']}\n"
+                f"- Total num. fingerprints: {total_fps_num:,}\n"
                 f"- Output directory: {config['out_dir']}\n",
                 end="",
             )
         bb_variant = config.get("bitbirch_variant", "lean")
         max_files = config.get("max_files", None)
         max_fps = config.get("max_fps", None)
-        if config["refine_num"] > 0:
-            self.print(
-                f"- Will Refine largest {config['refine_num']} clusters\n", end=""
-            )
         if "tolerance" in config["merge_criterion"]:
             self.print(f"- Tolerance: {config['tolerance']}\n", end="")
+        if config["refine_num"] > 0:
+            self.print(
+                f"- Will refine largest {config['refine_num']} clusters\n", end=""
+            )
+            self.print(f"- Num. clusters to refine: {config['refine_num']}\n", end="")
+            self.print(
+                "- Refine criterion: "
+                f"[yellow]{config['refine_merge_criterion']}[/yellow]\n",
+                end="",
+            )
+            if "tolerance" in config["refine_merge_criterion"]:
+                self.print(f"- Refine tolerance: {config['tolerance']}\n", end="")
+            self.print(
+                f"- Refine threshold change: {config['refine_threshold_change']}\n",
+                end="",
+            )
         if bb_variant != "lean":
             self.print(
                 "- [bold]DEBUG:[/bold] Using bitbirch version: {variant}\n", end=""
@@ -103,7 +94,11 @@ class BBConsole(Console):
             )
         self.print()
 
-    def print_multiround_config(self, config: dict[str, tp.Any]) -> None:
+    def print_multiround_config(
+        self, config: dict[str, tp.Any], mp_context: tp.Any = None
+    ) -> None:
+        if mp_context is None:
+            mp_context = mp.get_context()
         num_processes = config.get("num_initial_processes", 1)
         extra_desc = (
             f"parallel (max {num_processes:,} processes)"
@@ -112,6 +107,7 @@ class BBConsole(Console):
         )
         desc = f"multi-round, {extra_desc}"
         num_fps_loaded = np.array(config["num_fps_loaded"])
+        total_fps_num = num_fps_loaded.sum()
         with np.printoptions(formatter={"int": "{:,}".format}, threshold=10):
             num_fps_str = str(num_fps_loaded)[1:-1]
             self.print(
@@ -122,11 +118,13 @@ class BBConsole(Console):
                 f"- Tolerance: {config['tolerance']}\n"
                 f"- Num. files loaded: {len(config['input_files']):,}\n"
                 f"- Num. fingerprints loaded for each file: {num_fps_str}\n"
-                f"- Use mmap: {config['use_mmap']}\n"
+                f"- Total num. fingerprints: {total_fps_num:,}\n"
                 f"- Output directory: {config['out_dir']}\n",
                 end="",
             )
-        double_cluster_init = config.get("double_cluster_init", False)
+        full_refinement_before_midsection = config.get(
+            "full_refinement_before_midsection", False
+        )
         bb_variant = config.get("bitbirch_variant", "lean")
         max_files = config.get("max_files", None)
         bin_size = config.get("bin_size", None)
@@ -135,12 +133,12 @@ class BBConsole(Console):
             self.print(f"- Bin size for second round: {bin_size:,}\n", end="")
         if num_processes > 1:
             self.print(
-                f"- Multiprocessing method: [yellow]{mp.get_start_method()}[/yellow]\n",
+                f"- Multiprocessing method: [yellow]{mp_context._name}[/yellow]\n",
                 end="",
             )
-        if not double_cluster_init:
+        if not full_refinement_before_midsection:
             self.print(
-                f"- Use double-cluster-init: {double_cluster_init}\n",
+                f"- Full refinement before midsection: {full_refinement_before_midsection}\n",  # noqa:E501
                 end="",
             )
         if bb_variant != "lean":
@@ -162,10 +160,7 @@ class SilentConsole(BBConsole):
     def print(self, *args: tp.Any, **kwargs: tp.Any) -> None:
         pass
 
-    def print_peak_mem(self, num_processes: int, indent: bool = True) -> None:
-        pass
-
-    def print_peak_mem_raw(self, stats: PeakMemoryStats, indent: bool = True) -> None:
+    def print_peak_mem(self, out_dir: Path, indent: bool = True) -> None:
         pass
 
     def print_banner(self) -> None:

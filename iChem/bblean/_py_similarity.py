@@ -5,8 +5,8 @@ import warnings
 from numpy.typing import NDArray
 import numpy as np
 
-from bblean.utils import min_safe_uint
-from bblean.fingerprints import unpack_fingerprints, pack_fingerprints
+from .utils import min_safe_uint
+from .fingerprints import unpack_fingerprints, pack_fingerprints
 
 
 def centroid_from_sum(

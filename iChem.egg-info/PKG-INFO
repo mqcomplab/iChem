@@ -179,6 +179,8 @@ Requires-Dist: scipy>=1.11.0
 Requires-Dist: seaborn
 Requires-Dist: scikit-learn
 Requires-Dist: numexpr>=2.8.0
+Requires-Dist: rich
+Requires-Dist: psutil
 Provides-Extra: rdkit
 Requires-Dist: rdkit; extra == "rdkit"
 Provides-Extra: all

@@ -5,6 +5,8 @@ scipy>=1.11.0
 seaborn
 scikit-learn
 numexpr>=2.8.0
+rich
+psutil
 
 [all]
 rdkit
