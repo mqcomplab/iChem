@@ -3,7 +3,7 @@ import pandas as pd # type: ignore
 from .iSIM import calculate_isim
 from .iSIM.real import pair_jt, pair_rr, pair_sm
 from rdkit import Chem, DataStructs # type: ignore
-from rdkit.Chem import AllChem, Descriptors # type: ignore
+from rdkit.Chem import Descriptors, rdFingerprintGenerator, MACCSkeys # type: ignore
 
 """
 This module contains utility functions for the iChem package regarding fingerprint generation, and 
@@ -25,17 +25,17 @@ def binary_fps(smiles: list, fp_type: str = 'RDKIT', n_bits: int = 2048, return_
     """
     # Generate the fingerprints
     if fp_type == 'RDKIT':
-       def generate_fp(mol, fp):
-            DataStructs.cDataStructs.ConvertToNumpyArray(Chem.RDKFingerprint(mol), fp)
+        fps_gen = rdFingerprintGenerator.GetRDKitFPGenerator(maxPath=5, fpSize=n_bits)
     elif fp_type == 'ECFP4':
-        def generate_fp(mol, fp):
-            DataStructs.cDataStructs.ConvertToNumpyArray(AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=n_bits), fp)
+        fps_gen = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=n_bits)
     elif fp_type == 'ECFP6':
-        def generate_fp(mol, fp):
-            DataStructs.cDataStructs.ConvertToNumpyArray(AllChem.GetMorganFingerprintAsBitVect(mol, 3, nBits=n_bits), fp)
+        fps_gen = rdFingerprintGenerator.GetMorganGenerator(radius=3, fpSize=n_bits)
     elif fp_type == 'MACCS':
-        def generate_fp(mol, fp):
-            DataStructs.cDataStructs.ConvertToNumpyArray(Chem.rdMolDescriptors.GetMACCSKeysFingerprint(mol), fp)
+        class fps_gen:
+            def GetFingerprintAsNumPy(mol):
+                fp = np.zeros((167,), dtype=np.uint8)
+                DataStructs.ConvertToNumpyArray(MACCSkeys.GenMACCSKeys(mol), fp)
+                return fp
     else:
         print('Invalid fingerprint type: ', fp_type)
         exit(0)
@@ -54,7 +54,7 @@ def binary_fps(smiles: list, fp_type: str = 'RDKIT', n_bits: int = 2048, return_
         try:
             # Generate the fingerprint and append to the list
             fingerprint = np.array([], dtype=np.uint8)
-            generate_fp(mol, fingerprint)
+            fingerprint = fps_gen.GetFingerprintAsNumPy(mol)
             fingerprints.append(fingerprint)
         except:
             print('Error generating fingerprint for SMILES: ', smi)
