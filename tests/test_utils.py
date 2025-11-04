@@ -5,7 +5,7 @@ import pytest # type: ignore
 import numpy as np # type: ignore
 import pandas as pd # type: ignore
 
-fps = np.load('data/RDKIT_fps.npy')
+fps = np.load('tests/data/RDKIT_fps.npy')
 
 # Test the npy_to_rdkit function
 def test_npy_to_rdkit():
@@ -39,7 +39,7 @@ def test_pairwise_average():
 # Test the pairwise avrage for real fingerprints
 def test_pairwise_average_real():
     # Calculate the average similarity for real fingerprints
-    smiles = pd.read_csv('data/logP_data.csv')
+    smiles = pd.read_csv('tests/data/logP_data.csv')
     smiles = smiles['SMILES']
     fps = utils.real_fps(smiles)
     fps = utils.minmax_norm(fps)
@@ -55,7 +55,7 @@ def test_pairwise_average_real():
 # Test the real_fps function and normalization
 def test_real_fps():
     # Calculate the real fingerprints
-    smiles = pd.read_csv('data/logP_data.csv')
+    smiles = pd.read_csv('tests/data/logP_data.csv')
     smiles = smiles['SMILES']
     fps, invalid_smiles = utils.real_fps(smiles, return_invalid = True)
     assert type(fps) == np.ndarray

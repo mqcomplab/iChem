@@ -129,7 +129,7 @@ def stratified_sampling(fingerprints = None, n_ary = 'JT', n_sample = 10, strata
   
     return np.array(sampled_indexes)
 
-def quota_sampling(fingerprints = None, n_ary = 'JT', percentage = 10, n_bins = None, hard_cap = True, comp_sim = None):
+def quota_sampling(fingerprints = None, n_ary = 'JT', n_sample = 10, n_bins = None, hard_cap = True, comp_sim = None):
     """
     Quota sampling according to comp_sim values.
     
@@ -156,10 +156,7 @@ def quota_sampling(fingerprints = None, n_ary = 'JT', percentage = 10, n_bins = 
 
     # Define the number of batches if not specified
     if not n_bins:
-        n_bins = int(n_objects*percentage/100)
-
-    # Define the number of objetcs to sample
-    n_sample = int(n_objects*percentage/100)
+        n_bins = n_sample
     
     # Check if the number of objects to sample is not less than the number of bins
     if n_sample < 1 or n_sample < n_bins:
