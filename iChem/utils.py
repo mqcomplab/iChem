@@ -9,6 +9,37 @@ from rdkit.Chem import Descriptors, rdFingerprintGenerator, MACCSkeys # type: ig
 This module contains utility functions for the iChem package regarding fingerprint generation, and 
 pairwise similarity calculations using RDKit functions.
 """
+def _get_generator(fp_type: str, n_bits: int):
+    """Helper function to get the appropriate fingerprint generator"""
+    if fp_type == 'RDKIT':
+        return rdFingerprintGenerator.GetRDKitFPGenerator(maxPath=5, fpSize=n_bits)
+    elif fp_type == 'ECFP4':
+        return rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=n_bits)
+    elif fp_type == 'ECFP6':
+        return rdFingerprintGenerator.GetMorganGenerator(radius=3, fpSize=n_bits)
+    elif fp_type == 'AP':
+        return rdFingerprintGenerator.GetAtomPairGenerator(fpSize=n_bits)
+    elif fp_type == 'TT':
+        return rdFingerprintGenerator.GetTopologicalTorsionGenerator(fpSize=n_bits)
+    elif fp_type == 'MACCS':
+        class MACCSGen:
+            def GetFingerprintAsNumPy(self, mol):
+                fp = np.zeros((167,), dtype=np.uint8)
+                DataStructs.ConvertToNumpyArray(MACCSkeys.GenMACCSKeys(mol), fp)
+                return fp
+            def GetCountFingerprintAsNumPy(self, mol):
+                fp = np.zeros((167,), dtype=np.uint8)
+                DataStructs.ConvertToNumpyArray(MACCSkeys.GenMACCSKeys(mol), fp)
+                patterns = MACCSkeys.smartsPatts
+                for i in range(1, 167):
+                    if fp[i] == 1:
+                        matches = mol.GetSubstructMatches(Chem.MolFromSmarts(patterns[i][0]))
+                        fp[i] = max(len(matches), 1)
+                return fp
+        return MACCSGen()
+    else:
+        raise ValueError(f'Invalid fingerprint type: {fp_type}')
+
 def binary_fps(smiles: list, fp_type: str = 'RDKIT', n_bits: int = 2048, return_invalid: bool = True) -> np.ndarray:
     """
     This function generates binary fingerprints for the dataset.
@@ -24,21 +55,7 @@ def binary_fps(smiles: list, fp_type: str = 'RDKIT', n_bits: int = 2048, return_
     and list of invalid SMILES indices if return_invalid is True
     """
     # Generate the fingerprints
-    if fp_type == 'RDKIT':
-        fps_gen = rdFingerprintGenerator.GetRDKitFPGenerator(maxPath=5, fpSize=n_bits)
-    elif fp_type == 'ECFP4':
-        fps_gen = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=n_bits)
-    elif fp_type == 'ECFP6':
-        fps_gen = rdFingerprintGenerator.GetMorganGenerator(radius=3, fpSize=n_bits)
-    elif fp_type == 'MACCS':
-        class fps_gen:
-            def GetFingerprintAsNumPy(mol):
-                fp = np.zeros((167,), dtype=np.uint8)
-                DataStructs.ConvertToNumpyArray(MACCSkeys.GenMACCSKeys(mol), fp)
-                return fp
-    else:
-        print('Invalid fingerprint type: ', fp_type)
-        exit(0)
+    fps_gen = _get_generator(fp_type, n_bits)
 
     fingerprints = []
     invalid_smiles = []
@@ -53,8 +70,49 @@ def binary_fps(smiles: list, fp_type: str = 'RDKIT', n_bits: int = 2048, return_
 
         try:
             # Generate the fingerprint and append to the list
-            fingerprint = np.array([], dtype=np.uint8)
             fingerprint = fps_gen.GetFingerprintAsNumPy(mol)
+            fingerprints.append(fingerprint)
+        except:
+            print('Error generating fingerprint for SMILES: ', smi)
+            invalid_smiles.append(k)
+
+    fingerprints = np.array(fingerprints)
+    if return_invalid:
+        return fingerprints, invalid_smiles
+    else:
+        return fingerprints
+    
+def count_fps(smiles: list, fp_type: str = 'RDKIT', n_bits: int = 2048, return_invalid: bool = True) -> np.ndarray:
+    """
+    This function generates count-based fingerprints for the dataset.
+    
+    Parameters:
+    smiles: list of SMILES strings
+    fp_type: type of fingerprint to generate ['RDKIT', 'ECFP4', 'ECFP6']
+    n_bits: number of bits for the fingerprint
+    return_invalid: whether to return invalid SMILES indices
+    
+    Returns:
+    fingerprints: numpy array of fingerprints
+    and list of invalid SMILES indices if return_invalid is True
+    """
+    # Generate the fingerprints
+    fps_gen = _get_generator(fp_type, n_bits)
+
+    fingerprints = []
+    invalid_smiles = []
+    for k, smi in enumerate(smiles):
+        # Generate the mol object
+        try:
+          mol = Chem.MolFromSmiles(smi)
+        except:
+          print('Invalid SMILES: ', smi)
+          invalid_smiles.append(k)
+          exit(0)
+
+        try:
+            # Generate the fingerprint and append to the list
+            fingerprint = fps_gen.GetCountFingerprintAsNumPy(mol)
             fingerprints.append(fingerprint)
         except:
             print('Error generating fingerprint for SMILES: ', smi)

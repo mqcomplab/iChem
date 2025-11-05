@@ -67,3 +67,29 @@ def test_real_fps():
     assert value_norm.min() == 0
     assert value_norm.max() == 1
     assert value_norm.shape
+
+# Test the binary fingerprints function
+def test_binary_fps():
+    smiles = []
+    with open('tests/data/chembl.smi', 'r') as f:
+        for line in f:
+            smiles.append(line.strip())
+    for fp_type in ['RDKIT', 'ECFP4', 'ECFP6', 'MACCS', 'AP', 'TT']:
+        fps, invalid_smiles = utils.binary_fps(smiles, fp_type=fp_type, n_bits=2048, return_invalid=True)
+        assert type(fps) == np.ndarray
+        assert fps.shape[0] + len(invalid_smiles) == 3000
+        assert np.sum(fps, axis=1).max() <= 2048
+        assert np.sum(fps, axis=1).min() >= 0
+
+# Test the count fingerprints function
+def test_count_fps():
+    smiles = []
+    with open('tests/data/chembl.smi', 'r') as f:
+        for line in f:
+            smiles.append(line.strip())
+    for fp_type in ['ECFP4', 'RDKIT', 'AP', 'TT', 'ECFP6', 'MACCS']:
+        fps, invalid_smiles = utils.count_fps(smiles, fp_type=fp_type, n_bits=2048, return_invalid=True)
+        assert type(fps) == np.ndarray
+        assert fps.shape[0] + len(invalid_smiles) == 3000
+        assert fps.max() > 1
+        assert fps.min() >= 0
