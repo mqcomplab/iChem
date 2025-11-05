@@ -1,11 +1,12 @@
 import numpy as np # type: ignore
 
 from ..bblean import pack_fingerprints, unpack_fingerprints
-from ..utils import binary_fps
+from ..utils import binary_fps, rdkit_pairwise_matrix
 from ..bblean import BitBirch
 from ..iSIM import calculate_isim, calculate_medoid
 from ..iSIM.sampling import stratified_sampling
 from ..iSIM.sigma import stratified_sigma
+from iChem import iSIM
 
 class LibChem:
     def __init__(self):
@@ -19,7 +20,7 @@ class LibChem:
     ) -> None:
         """Load SMILES from a .smi file"""
         with open(smiles, 'r') as f:
-            self.smiles = [line.strip() for line in f.readlines()]
+            self.smiles = [line.split('\t', 1)[0].strip() for line in f if line.strip()]
 
 
     def load_fingerprints(
@@ -135,23 +136,24 @@ class LibChem:
             self,
             threshold: float = None,
             merge: str = 'diameter',
+            indices: list[int] = None,
     ) -> None:
         """Cluster molecules using BitBirch algorithm based on iSIM and optimal threshold"""
         if threshold is None:
             threshold = self._optimal_threshold()
         
         bb_object = BitBirch(threshold=threshold, branching_factor=50, merge_criterion=merge)
-        bb_object.fit(self.fps_packed)
+        bb_object.fit(self.fps_packed, reinsert_indices=indices)
         if not hasattr(self, 'iSIM_sigma'):
             self._calculate_iSIM_sigma()
 
-        bb_object.recluster_inplace(extra_threshold=self.iSIM_sigma, verbose=True)
+        bb_object.recluster_inplace(extra_threshold=self.iSIM_sigma, verbose=False, iterations=5)
         self.clusters = bb_object.get_cluster_mol_ids()
 
     def get_clusters(
             self,
     ) -> list[list[int]]:
-        """Retrieve the clusters formed after clustering"""
+        """Retrieve the clusters (indexes) formed after clustering"""
         if not hasattr(self, 'clusters'):
             self.cluster()
         
@@ -174,6 +176,7 @@ class LibChem:
     
     def get_cluster_medoids(
             self,
+            return_smiles: bool = True,
     ) -> list[str]:
         """Retrieve the medoid SMILES string for each cluster"""
         if self.smiles is None:
@@ -182,23 +185,35 @@ class LibChem:
             self.cluster()
         
         fingerprints_medoids = []
-        smiles_medoids = []
-        for cluster in self.clusters:
-            fps_cluster = self.fps_packed[cluster]
-            fps_cluster = unpack_fingerprints(fps_cluster)
-            medoid_index = calculate_medoid(fps_cluster)
-            fingerprints_medoids.append(fps_cluster[medoid_index])
-            smiles_medoids.append(self.smiles[cluster[medoid_index]])
+        if return_smiles:
+            smiles_medoids = []
+            for cluster in self.clusters:
+                fps_cluster = self.fps_packed[cluster]
+                fps_cluster = unpack_fingerprints(fps_cluster)
+                medoid_index = calculate_medoid(fps_cluster)
+                fingerprints_medoids.append(fps_cluster[medoid_index])
+                smiles_medoids.append(self.smiles[cluster[medoid_index]])
+            
+            return fingerprints_medoids, smiles_medoids
+        else:
+            for cluster in self.clusters:
+                fps_cluster = self.fps_packed[cluster]
+                fps_cluster = unpack_fingerprints(fps_cluster)
+                medoid_index = calculate_medoid(fps_cluster)
+                fingerprints_medoids.append(fps_cluster[medoid_index])
+            
+            return fingerprints_medoids
 
-        return fingerprints_medoids, smiles_medoids
-    
     def cluster_sample(
             self,
-            n_samples: int = 1000
+            n_samples: int = 1000,
+            return_smiles: bool = True,
         ) -> None:
         """Cluster a sample of molecules using stratified sampling"""
         if self.fps_packed is None:
             raise ValueError("Fingerprints not loaded or generated.")
+        if self.smiles is None and return_smiles is True:
+            raise ValueError("SMILES data not loaded.")
         if self.n_molecules < n_samples:
             raise ValueError("Number of samples exceeds number of molecules.")
         if not hasattr(self, 'clusters'):
@@ -221,10 +236,283 @@ class LibChem:
             else:
                 sampled_indices = stratified_sampling(fps_cluster, n_sample=n_sample_cluster)
             sampled_fps_ = fps_cluster[sampled_indices]
-            sampled_smiles_ = [self.smiles[cluster[i]] for i in sampled_indices]
             sampled_fps.extend(sampled_fps_)
-            sampled_smiles.extend(sampled_smiles_)
+            if return_smiles:
+                sampled_smiles_ = [self.smiles[cluster[i]] for i in sampled_indices]
+                sampled_smiles.extend(sampled_smiles_)
             cluster_ids.extend([k] * n_sample_cluster)
 
-        return sampled_fps, sampled_smiles, cluster_ids
+        if return_smiles:
+            return sampled_fps, sampled_smiles, cluster_ids
+        else:
+            return sampled_fps, cluster_ids
 
+
+class LibComparison:
+    def __init__(self, 
+            lib1: LibChem, 
+            lib2: LibChem,
+    ):
+        self.lib1 = lib1
+        self.lib2 = lib2
+
+    def compare_medoids(self, methodology: str = 'MaxSum') -> float:
+        """Compare medoids of two libraries"""
+        fps1 = self.lib1.get_cluster_medoids(return_smiles=False)
+        fps2 = self.lib2.get_cluster_medoids(return_smiles=False)
+
+        sim_matrix = rdkit_pairwise_matrix(
+            np.array(fps1),
+            np.array(fps2),
+        )
+
+        if methodology == 'MaxSum':
+            total_similarity = 0.0
+            for i in range(sim_matrix.shape[0]):
+                max_sim = np.max(sim_matrix[i, :])
+                total_similarity += max_sim
+            for k in range(sim_matrix.shape[1]):
+                max_sim = np.max(sim_matrix[:, k])
+                total_similarity += max_sim
+            medoids_maxsum = total_similarity / (sim_matrix.shape[0] + sim_matrix.shape[1])
+
+            return medoids_maxsum
+        
+        if methodology == 'MinSum':
+            total_similarity = 0.0
+            for i in range(sim_matrix.shape[0]):
+                min_sim = np.min(sim_matrix[i, :])
+                total_similarity += min_sim
+            for k in range(sim_matrix.shape[1]):
+                min_sim = np.min(sim_matrix[:, k])
+                total_similarity += min_sim
+            medoids_minsum = total_similarity / (sim_matrix.shape[0] + sim_matrix.shape[1])
+
+            return medoids_minsum
+
+        if methodology == 'intraiSIM':
+            isim_value = calculate_isim(
+                np.array(fps1 + fps2),
+                n_ary='JT',
+            )
+            return isim_value
+        
+        if methodology == 'interiSIM':
+            n1 = len(fps1)
+            n2 = len(fps2)
+            n3 = n1 + n2
+
+            iSIM_1 = calculate_isim(
+                np.array(fps1),
+                n_ary='JT',
+            )
+
+            iSIM_2 = calculate_isim(
+                np.array(fps2),
+                n_ary='JT',
+            )
+
+            iSIM_3 = calculate_isim(
+                np.array(fps1 + fps2),
+                n_ary='JT',
+            )
+
+            interiSIM = (iSIM_3 * n3 * (n3 - 1) - iSIM_1 * n1 * (n1 - 1) - iSIM_2 * n2 * (n2 - 1)) / (2 * n1 * n2)
+
+            return interiSIM
+
+    def cluster_medoids_proportion(self,
+                           threshold: float = None,) -> float:
+        """Cluster the combined medoids of both libraries"""
+        clusters, n1 = self._cluster_medoid_mix(threshold=threshold)
+
+        mixed_cluster_count, only_lib1_count, only_lib2_count = cluster_class_counts(clusters, n1=n1)
+
+        proportion_mixed, proportion_1, proportion_2 = calc_proportions(mixed_cluster_count, only_lib1_count, only_lib2_count)
+        return proportion_mixed, proportion_1, proportion_2
+    
+    def _cluster_medoid_mix(self,
+                            threshold: float = None,) -> float:
+          """Cluster the combined medoids of both libraries"""
+          fps1 = self.lib1.get_cluster_medoids(return_smiles=False)
+          fps2 = self.lib2.get_cluster_medoids(return_smiles=False)
+    
+          n1 = len(fps1)
+          n2 = len(fps2)
+          n3 = n1 + n2
+          print(f'Number of medoids in Library 1: {n1}, proportion: {n1/n3:.2f}')
+          print(f'Number of medoids in Library 2: {n2}, proportion: {n2/n3:.2f}')
+          print(f'Total number of medoids: {n3}')
+    
+          # Create a new LibChem instance for combined medoids
+          combined_lib = LibChem()
+          fps3 = np.array(fps1 + fps2)
+          indices = np.arange(n3)
+          np.random.shuffle(indices)
+          fps3 = fps3[indices]
+          combined_lib.fps_packed = pack_fingerprints(fps3)
+          combined_lib.n_molecules = len(fps3)
+    
+          # Delete temporary variables to free memory
+          del fps1, fps2
+    
+          # Perform clustering on the combined library
+          combined_lib.cluster(threshold=threshold, indices=indices.tolist())
+    
+          # Get the clusters
+          clusters = combined_lib.get_clusters()
+    
+          return clusters, n1
+    
+    def _cluster_sample_mix(self,
+                           n_samples: int = None,) -> float:
+        """Cluster a sample of combined medoids of both libraries"""
+        fps1 = self.lib1.cluster_sample(n_samples=n_samples, return_smiles=False)[0]
+        fps2 = self.lib2.cluster_sample(n_samples=n_samples, return_smiles=False)[0]
+
+        n1 = len(fps1)
+        n2 = len(fps2)
+        n3 = n1 + n2
+        print(f'Number of sampled mols in Library 1: {n1}, proportion: {n1/n3:.2f}')
+        print(f'Number of sampled mols in Library 2: {n2}, proportion: {n2/n3:.2f}')
+        print(f'Total number of sampled mols: {n3}')
+
+        # Create a new LibChem instance for combined sampled mols
+        combined_lib = LibChem()
+        fps3 = np.array(fps1 + fps2)
+        indices = np.arange(n3)
+        np.random.shuffle(indices)
+        fps3 = fps3[indices]
+        combined_lib.fps_packed = pack_fingerprints(fps3)
+        combined_lib.n_molecules = len(fps3)
+
+        # Delete temporary variables to free memory
+        del fps1, fps2
+
+        # Perform clustering on the combined library
+        combined_lib.cluster(indices=indices.tolist())
+
+        # Get the clusters
+        clusters = combined_lib.get_clusters()
+
+        return clusters, n1
+    
+    def cluster_sample_proportions(self,
+                           n_samples: int = None,) -> float:
+        """Cluster a sample of combined medoids of both libraries"""
+        if n_samples is None:
+            raise ValueError("Number of samples must be specified.")
+
+        # Get the clusters
+        clusters, n1 = self._cluster_sample_mix(n_samples=n_samples)
+
+        # Calculate the proportion of mixed clusters
+        mixed_cluster_count, only_lib1_count, only_lib2_count = cluster_class_counts(clusters, n1=n1)
+        proportion_mixed, proportion_1, proportion_2 = calc_proportions(mixed_cluster_count, only_lib1_count, only_lib2_count)
+        return proportion_mixed, proportion_1, proportion_2
+    
+    def get_combined_lib_clusters(self,
+                                  methodology: str = 'samples',
+                                  n_samples: int = None,
+                                  return_type: str = 'all',) -> list[list[int]]:
+        
+        """Get clusters from combined libraries based on specified methodology"""
+        if methodology == 'medoids':
+            clusters, n1 = self._cluster_medoid_mix()
+        elif methodology == 'samples':
+            if n_samples is None:
+                raise ValueError("Number of samples must be specified for 'samples' methodology.")
+            clusters, n1 = self._cluster_sample_mix(n_samples=n_samples)
+        else:
+            raise ValueError("Methodology must be either 'medoids' or 'samples'.")
+        
+        combined_smiles = self.lib1.smiles + self.lib2.smiles
+        mixed, only_lib1, only_lib2 = cluster_classification(clusters, n1=n1)
+
+        if return_type == 'all':
+            mixed_cluster_smiles = [[combined_smiles[idx] for idx in cluster] for cluster in mixed]
+            only_lib1_cluster_smiles = [[combined_smiles[idx] for idx in cluster] for cluster in only_lib1]
+            only_lib2_cluster_smiles = [[combined_smiles[idx] for idx in cluster] for cluster in only_lib2]
+            return mixed_cluster_smiles, only_lib1_cluster_smiles, only_lib2_cluster_smiles
+        elif return_type == 'mixed':
+            mixed_cluster_smiles = [[combined_smiles[idx] for idx in cluster] for cluster in mixed]
+            return mixed_cluster_smiles
+        elif return_type == 'only_lib1':
+            only_lib1_cluster_smiles = [[combined_smiles[idx] for idx in cluster] for cluster in only_lib1]
+            return only_lib1_cluster_smiles
+        elif return_type == 'only_lib2':
+            only_lib2_cluster_smiles = [[combined_smiles[idx] for idx in cluster] for cluster in only_lib2]
+            return only_lib2_cluster_smiles
+        elif return_type == 'both_libs':
+            only_lib1_cluster_smiles = [[combined_smiles[idx] for idx in cluster] for cluster in only_lib1]
+            only_lib2_cluster_smiles = [[combined_smiles[idx] for idx in cluster] for cluster in only_lib2]
+            return only_lib1_cluster_smiles, only_lib2_cluster_smiles
+        else:
+            raise ValueError("return_type must be 'all', 'mixed', 'only_lib1', 'only_lib2', or 'both_libs'.")
+
+    def _cluster_all_together(self
+                              ) -> None:
+        """Cluster all molecules from both libraries together"""
+        fps1 = self.lib1.get_fingerprints(packed=True)
+        n1 = len(fps1)
+        fps2 = self.lib2.get_fingerprints(packed=True)
+        fps3 = np.vstack((fps1, fps2))
+        indices = np.arange(len(fps3))
+        np.random.shuffle(indices)
+        fps3 = fps3[indices]
+
+        combined_lib = LibChem()
+        combined_lib.load_fingerprints(
+            fingerprints = fps3,
+            packed = True,
+        )
+
+        combined_lib.cluster()
+        clusters = combined_lib.get_clusters()
+
+        return clusters, n1
+    
+    def cluster_all_proportions(self
+                              ) -> float:
+        """Cluster all molecules from both libraries together and calculate proportions"""
+        clusters, n1 = self._cluster_all_together()
+
+        mixed_cluster_count, only_lib1_count, only_lib2_count = cluster_class_counts(clusters, n1=n1)
+
+        proportion_mixed, proportion_1, proportion_2 = calc_proportions(mixed_cluster_count, only_lib1_count, only_lib2_count)
+        return proportion_mixed, proportion_1, proportion_2
+    
+def cluster_class_counts(clusters: list[list[int]], n1: int) -> dict:
+    """Count the number of clusters by class composition"""
+    mixed = 0
+    only_lib1 = 0
+    only_lib2 = 0
+    for cluster in clusters:
+        has_lib1 = all(idx < n1 for idx in cluster)
+        has_lib2 = all(idx >= n1 for idx in cluster)
+        if has_lib1:
+            only_lib1 += 1
+        elif has_lib2:
+            only_lib2 += 1
+        else:
+            mixed += 1
+    return mixed, only_lib1, only_lib2
+
+def cluster_classification(clusters: list[list[int]], n1: int) -> list[str]:
+    """Classify clusters based on their composition"""
+    mixed, only_lib1, only_lib2 = [], [], []
+    for k, cluster in enumerate(clusters):
+        has_lib1 = all(idx < n1 for idx in cluster)
+        has_lib2 = all(idx >= n1 for idx in cluster)
+        if has_lib1:
+            only_lib1.append(k)
+        elif has_lib2:
+            only_lib2.append(k)
+        else:
+            mixed.append(k)
+    return [clusters[i] for i in mixed], [clusters[i] for i in only_lib1], [clusters[i] for i in only_lib2]
+
+def calc_proportions(mixed, only_1, only_2):
+    """Calculate proportions of cluster types"""
+    total = mixed + only_1 + only_2
+    return mixed / total, only_1 / total, only_2 / total

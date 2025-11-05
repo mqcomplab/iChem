@@ -4,12 +4,18 @@ from .isim import calculate_isim
 def calculate_medoid(fingerprints, n_ary = 'JT') -> int:
     """Calculate the medoid in a dataset based on complementary similarity.
     Returns the index of the medoid."""
-    return np.argmin(calculate_comp_sim(fingerprints, n_ary = n_ary))
+    if len(fingerprints) <= 2:
+        return 0
+    else:
+        return np.argmin(calculate_comp_sim(fingerprints, n_ary = n_ary))
 
 def calculate_outlier(fingerprints, n_ary = 'JT') -> int:
     """Calculate the outlier in a dataset based on complementary similarity.
     Returns the index of the outlier."""
-    return np.argmax(calculate_comp_sim(fingerprints, n_ary = n_ary))
+    if len(fingerprints) <= 2:
+        return 0
+    else:
+        return np.argmax(calculate_comp_sim(fingerprints, n_ary = n_ary))
 
 def comp_sim_indexes(fingerprints: np.ndarray, n_ary: str = 'JT') -> np.ndarray:
     """

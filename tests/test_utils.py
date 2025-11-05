@@ -36,6 +36,12 @@ def test_pairwise_average():
     value = utils.pairwise_average(fps, n_ary="JT")
     assert value == pytest.approx(0.198477)
 
+# Test the pairwise average for binary fingerprints
+def test_pairwise_average_binary():
+    # Calculate the average similarity for binary fingerprints
+    value = utils.rdkit_pairwise_matrix(fps).mean()
+    assert value == pytest.approx(0.198477, abs=0.01)
+
 # Test the pairwise avrage for real fingerprints
 def test_pairwise_average_real():
     # Calculate the average similarity for real fingerprints

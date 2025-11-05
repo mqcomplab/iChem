@@ -246,7 +246,7 @@ def rdkit_pairwise_sim(fingerprints, return_std: bool = False):
         return np.mean(similarity)
 
 
-def rdkit_pairwise_matrix(fingerprints):
+def rdkit_pairwise_matrix(fingerprints: np.ndarray, fingerprints_2: np.ndarray = None):
     """
     This function computes the pairwise similarity between all objects in the dataset using Jaccard-Tanimoto similarity.
 
@@ -259,17 +259,31 @@ def rdkit_pairwise_matrix(fingerprints):
     if type(fingerprints[0]) == np.ndarray:
         fingerprints = npy_to_rdkit(fingerprints)
 
-    n = len(fingerprints)
-    matrix = np.zeros((n, n))
-    np.fill_diagonal(matrix, 1)  # Set diagonal values to 1
+    if fingerprints_2 is None:
+        n = len(fingerprints)
+        matrix = np.zeros((n, n))
+        np.fill_diagonal(matrix, 1)  # Set diagonal values to 1
 
-    # Fill the upper triangle directly while computing similarities
-    for i in range(n - 1):
-        sim = DataStructs.BulkTanimotoSimilarity(fingerprints[i], fingerprints[i + 1:])
-        for j, s in enumerate(sim):
-            matrix[i, i + 1 + j] = s  # Map similarities to the correct indices in the upper triangle
+        # Fill the upper triangle directly while computing similarities
+        for i in range(n - 1):
+            sim = DataStructs.BulkTanimotoSimilarity(fingerprints[i], fingerprints[i + 1:])
+            matrix[i, i + 1:] = sim
+            matrix[i + 1:, i] = sim  # Mirror to the lower triangle
 
-    return matrix
+        return matrix
+    else:
+        if type(fingerprints_2[0]) == np.ndarray:
+            fingerprints_2 = npy_to_rdkit(fingerprints_2)
+
+        n1 = len(fingerprints)
+        n2 = len(fingerprints_2)
+        matrix = np.zeros((n1, n2))
+
+        for i in range(n1):
+            sim = DataStructs.BulkTanimotoSimilarity(fingerprints[i], fingerprints_2)
+            matrix[i, :] = sim
+        
+        return matrix
   
 def pairwise_average(fingerprints: np.ndarray, n_ary: str = 'JT', return_std: bool = False):
     """
