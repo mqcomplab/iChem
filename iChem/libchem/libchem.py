@@ -3,12 +3,11 @@ import numpy as np # type: ignore
 from ..bblean import pack_fingerprints, unpack_fingerprints
 from ..utils import binary_fps, rdkit_pairwise_matrix
 from ..bblean import BitBirch
-from ..iSIM import calculate_isim, calculate_medoid
-from ..iSIM.sampling import stratified_sampling
-from ..iSIM.sigma import stratified_sigma
-from iChem import iSIM
+from ..bblean.similarity import jt_isim_packed, estimate_jt_std, jt_isim_medoid, jt_stratified_sampling
 
 class LibChem:
+    """Class for handling chemical libraries, including loading SMILES,
+    generating fingerprints, calculating iSIM, and clustering molecules."""
     def __init__(self):
         self.smiles = None
         self.fps_packed = None
@@ -20,13 +19,16 @@ class LibChem:
     ) -> None:
         """Load SMILES from a .smi file"""
         with open(smiles, 'r') as f:
-            self.smiles = [line.split('\t', 1)[0].strip() for line in f if line.strip()]
-
+            self.smiles = [line.split('\t', 1)[0].split(' ')[0].strip() for line in f if line.strip()]
+        if self.fps_packed:
+            if len(self.smiles) != self.n_molecules:
+                raise ValueError("Number of SMILES does not match number of fingerprints.")
+        self.n_molecules = len(self.smiles)
 
     def load_fingerprints(
             self,
             fingerprints : np.array, 
-            packed: bool,
+            packed: bool = True,
     ) -> None:
         """Load fingerprints from a numpy array"""
         self.n_molecules = fingerprints.shape[0]
@@ -75,27 +77,26 @@ class LibChem:
         
     def _calculate_iSIM(
             self,
-            sim_index: str = 'JT',
     ) -> np.array:
         """Calculate iSIM similarity matrix from fingerprints"""
         if self.fps_packed is None:
             raise ValueError("Fingerprints not loaded or generated.")
 
-        self.iSIM = calculate_isim(unpack_fingerprints(self.fps_packed), n_ary=sim_index)
+        self.iSIM = jt_isim_packed(
+            self.fps_packed,
+        )
 
     def _calculate_iSIM_sigma(
             self,
-            n_sigma_samples: int = 50,
-            sim_index: str = 'JT',
+            n_sigma_samples: int = 50
     ) -> np.array:
         """Calculate iSIM similarity matrix with sigma adjustment from fingerprints"""
         if self.fps_packed is None:
             raise ValueError("Fingerprints not loaded or generated.")
         
-        self.iSIM_sigma = stratified_sigma(
-            unpack_fingerprints(self.fps_packed), 
-            n = n_sigma_samples, 
-            n_ary = sim_index
+        self.iSIM_sigma = estimate_jt_std(
+            self.fps_packed,
+            n_samples=n_sigma_samples,
         )
 
 
@@ -105,19 +106,17 @@ class LibChem:
     ) -> np.array:
         """Retrieve the calculated iSIM similarity matrix"""
         if not hasattr(self, 'iSIM'):
-            self._calculate_iSIM(sim_index=sim_index)
+            self._calculate_iSIM()
 
         return self.iSIM
     
     def get_iSIM_sigma(
             self,
             n_sigma_samples: int = 50,
-            sim_index: str = 'JT',
     ) -> float:
         """Retrieve the calculated iSIM sigma value"""
         if not hasattr(self, 'iSIM_sigma'):
-            self._calculate_iSIM_sigma(n_sigma_samples=n_sigma_samples, sim_index=sim_index)
-
+            self._calculate_iSIM_sigma(n_sigma_samples=n_sigma_samples)
         return self.iSIM_sigma
 
     def _optimal_threshold(
@@ -132,22 +131,40 @@ class LibChem:
 
         return self.iSIM + factor * self.iSIM_sigma
     
+    def set_optimal_threshold(
+            self,
+            threshold: float = None,
+    ) -> None:
+        """Set a custom optimal threshold for clustering"""
+        if threshold is None:
+            self.optimal_threshold = self._optimal_threshold()
+        else:
+            self.optimal_threshold = threshold
+
+        print(f"Optimal threshold set to: {self.optimal_threshold:.4f}")
+    
     def cluster(
             self,
             threshold: float = None,
+            branching_factor: int = 1024,
             merge: str = 'diameter',
-            indices: list[int] = None,
+            recluster: bool = True,
     ) -> None:
         """Cluster molecules using BitBirch algorithm based on iSIM and optimal threshold"""
         if threshold is None:
             threshold = self._optimal_threshold()
         
-        bb_object = BitBirch(threshold=threshold, branching_factor=50, merge_criterion=merge)
-        bb_object.fit(self.fps_packed, reinsert_indices=indices)
+        bb_object = BitBirch(threshold=threshold,
+                             branching_factor=branching_factor,
+                             merge_criterion=merge)
+        bb_object.fit(self.fps_packed)
+
         if not hasattr(self, 'iSIM_sigma'):
             self._calculate_iSIM_sigma()
 
-        bb_object.recluster_inplace(extra_threshold=self.iSIM_sigma, verbose=False, iterations=5)
+        if recluster:
+            bb_object.recluster_inplace(extra_threshold=self.iSIM_sigma, verbose=False, iterations=5)
+        
         self.clusters = bb_object.get_cluster_mol_ids()
 
     def get_clusters(
@@ -189,22 +206,20 @@ class LibChem:
             smiles_medoids = []
             for cluster in self.clusters:
                 fps_cluster = self.fps_packed[cluster]
-                fps_cluster = unpack_fingerprints(fps_cluster)
-                medoid_index = calculate_medoid(fps_cluster)
-                fingerprints_medoids.append(fps_cluster[medoid_index])
+                medoid_index, medoid_fingerprint = jt_isim_medoid(fps_cluster)
+                fingerprints_medoids.append(medoid_fingerprint)
                 smiles_medoids.append(self.smiles[cluster[medoid_index]])
             
-            return fingerprints_medoids, smiles_medoids
+            return np.array(fingerprints_medoids), smiles_medoids
         else:
             for cluster in self.clusters:
                 fps_cluster = self.fps_packed[cluster]
-                fps_cluster = unpack_fingerprints(fps_cluster)
-                medoid_index = calculate_medoid(fps_cluster)
-                fingerprints_medoids.append(fps_cluster[medoid_index])
+                medoid_index, medoid_fingerprint = jt_isim_medoid(fps_cluster)
+                fingerprints_medoids.append(medoid_fingerprint)
             
-            return fingerprints_medoids
+            return np.array(fingerprints_medoids)
 
-    def cluster_sample(
+    def get_cluster_samples(
             self,
             n_samples: int = 1000,
             return_smiles: bool = True,
@@ -229,12 +244,8 @@ class LibChem:
         for k, cluster in enumerate(self.clusters):
             n_cluster = len(cluster)
             fps_cluster = self.fps_packed[cluster]
-            fps_cluster = unpack_fingerprints(fps_cluster)
             n_sample_cluster = max(1, int(n_cluster * n_samples / self.n_molecules))
-            if n_cluster <= 2:
-                sampled_indices = [0]
-            else:
-                sampled_indices = stratified_sampling(fps_cluster, n_sample=n_sample_cluster)
+            sampled_indices = jt_stratified_sampling(fps_cluster, n_samples=n_sample_cluster)
             sampled_fps_ = fps_cluster[sampled_indices]
             sampled_fps.extend(sampled_fps_)
             if return_smiles:
@@ -250,16 +261,31 @@ class LibChem:
 
 class LibComparison:
     def __init__(self, 
-            lib1: LibChem, 
-            lib2: LibChem,
     ):
-        self.lib1 = lib1
-        self.lib2 = lib2
+        self.libraries = {}
 
-    def compare_medoids(self, methodology: str = 'MaxSum') -> float:
+    def add_library(self,
+            library: LibChem,
+            lib_name: str,
+    ) -> None:
+        """Add a library to the comparison"""
+        self.libraries[lib_name] = library
+
+    def compare_medoids(self, 
+                        methodology: str = 'MaxSum',
+                        lib1_name: str = None,
+                        lib2_name: str = None) -> float:
         """Compare medoids of two libraries"""
-        fps1 = self.lib1.get_cluster_medoids(return_smiles=False)
-        fps2 = self.lib2.get_cluster_medoids(return_smiles=False)
+        if lib1_name not in list(self.libraries.keys()) or lib2_name not in list(self.libraries.keys()):
+            raise ValueError("Both libraries must be specified and exist in the comparison libraries.")
+        if lib1_name == None and lib2_name == None and len(self.libraries) == 2:
+            lib1_name, lib2_name = list(self.libraries.keys())
+        
+        lib1 = self.libraries[lib1_name]
+        lib2 = self.libraries[lib2_name]
+
+        fps1 = lib1.get_cluster_medoids(return_smiles=False)
+        fps2 = lib2.get_cluster_medoids(return_smiles=False)
 
         sim_matrix = rdkit_pairwise_matrix(
             np.array(fps1),
@@ -321,52 +347,71 @@ class LibComparison:
 
             return interiSIM
 
-    def cluster_medoids_proportion(self,
-                           threshold: float = None,) -> float:
-        """Cluster the combined medoids of both libraries"""
-        clusters, n1 = self._cluster_medoid_mix(threshold=threshold)
 
-        mixed_cluster_count, only_lib1_count, only_lib2_count = cluster_class_counts(clusters, n1=n1)
-
-        proportion_mixed, proportion_1, proportion_2 = calc_proportions(mixed_cluster_count, only_lib1_count, only_lib2_count)
-        return proportion_mixed, proportion_1, proportion_2
-    
     def _cluster_medoid_mix(self,
-                            threshold: float = None,) -> float:
-          """Cluster the combined medoids of both libraries"""
-          fps1 = self.lib1.get_cluster_medoids(return_smiles=False)
-          fps2 = self.lib2.get_cluster_medoids(return_smiles=False)
+                            threshold: float = None,
+                            lib_names: list[str] = None,
+                            verbose: bool = False) -> float:
+        """Cluster the combined medoids of both libraries"""
+        if lib_names is None:
+            lib_names = list(self.libraries.keys())
+        if len(lib_names) < 2:
+            raise ValueError("At least two libraries must be specified for comparison.")
+        
+        medoids_fps = []
+        medoids_smiles = []
+        medoids_flags = []
+        for lib_name in lib_names:
+            if lib_name not in list(self.libraries.keys()):
+                raise ValueError(f"Library '{lib_name}' not found in comparison libraries.")
+            lib_medoids_fps, lib_medoids_smiles = self.libraries[lib_name].get_cluster_medoids(return_smiles=True)
+            medoids_fps.extend(lib_medoids_fps)
+            medoids_smiles.extend(lib_medoids_smiles)
+            medoids_flags.extend([lib_name] * len(lib_medoids_smiles))
+            if verbose:
+                print(f'Number of medoids in Library {lib_name}: {len(lib_medoids_smiles)}')
+            
+        medoids_fps = np.array(medoids_fps)
+        n_medoids = len(medoids_fps)
+        
+        if verbose:
+            print(f'Total number of medoids: {n_medoids}')
+        
+        # Create a new LibChem instance for combined medoids
+        combined_lib = LibChem()
+        
+        # Shuffle the fingerprints before clustering
+        indices = np.arange(len(medoids_fps))
+        np.random.shuffle(indices)
+        medoids_fps = medoids_fps[indices]
+        medoids_flags = [medoids_flags[i] for i in indices]
+        medoids_smiles = [medoids_smiles[i] for i in indices]
+
+        # Load the combined medoids into the new library
+        combined_lib.load_fingerprints(
+            fingerprints = medoids_fps,
+            packed = True,
+        )
+
+        # Do the clustering
+        combined_lib.cluster(threshold=threshold, indices=indices.tolist())
+
+        # Set the fingerprints and smiles to the combined library
+        combined_lib.fps_packed = pack_fingerprints(medoids_fps)
     
-          n1 = len(fps1)
-          n2 = len(fps2)
-          n3 = n1 + n2
-          print(f'Number of medoids in Library 1: {n1}, proportion: {n1/n3:.2f}')
-          print(f'Number of medoids in Library 2: {n2}, proportion: {n2/n3:.2f}')
-          print(f'Total number of medoids: {n3}')
+        # Get the clusters
+        clusters = combined_lib.get_clusters()
     
-          # Create a new LibChem instance for combined medoids
-          combined_lib = LibChem()
-          fps3 = np.array(fps1 + fps2)
-          indices = np.arange(n3)
-          np.random.shuffle(indices)
-          fps3 = fps3[indices]
-          combined_lib.fps_packed = pack_fingerprints(fps3)
-          combined_lib.n_molecules = len(fps3)
-    
-          # Delete temporary variables to free memory
-          del fps1, fps2
-    
-          # Perform clustering on the combined library
-          combined_lib.cluster(threshold=threshold, indices=indices.tolist())
-    
-          # Get the clusters
-          clusters = combined_lib.get_clusters()
-    
-          return clusters, n1
+        return clusters, medoids_smiles, medoids_flags
     
     def _cluster_sample_mix(self,
-                           n_samples: int = None,) -> float:
-        """Cluster a sample of combined medoids of both libraries"""
+                           n_samples: int = None,
+                           threshold: float = None,
+                           lib_names: list[str] = None,
+                           verbose: bool = False) -> float:
+        """Cluster a sample of combined samples of both libraries"""
+        if self.lib1_name is None and self.lib2_name is None and len(self.libraries) == 2:
+            pass
         fps1 = self.lib1.cluster_sample(n_samples=n_samples, return_smiles=False)[0]
         fps2 = self.lib2.cluster_sample(n_samples=n_samples, return_smiles=False)[0]
 
@@ -383,6 +428,9 @@ class LibComparison:
         indices = np.arange(n3)
         np.random.shuffle(indices)
         fps3 = fps3[indices]
+        if self.lib1.smiles is not None and self.lib2.smiles is not None:
+            combined_smiles = self.lib1.smiles + self.lib2.smiles
+            combined_lib.smiles = [combined_smiles[i] for i in indices]
         combined_lib.fps_packed = pack_fingerprints(fps3)
         combined_lib.n_molecules = len(fps3)
 
@@ -396,6 +444,16 @@ class LibComparison:
         clusters = combined_lib.get_clusters()
 
         return clusters, n1
+    
+    def cluster_medoids_proportion(self,
+                           threshold: float = None,) -> float:
+        """Cluster the combined medoids of both libraries"""
+        clusters, n1 = self._cluster_medoid_mix(threshold=threshold)
+
+        mixed_cluster_count, only_lib1_count, only_lib2_count = cluster_class_counts(clusters, n1=n1)
+
+        proportion_mixed, proportion_1, proportion_2 = calc_proportions(mixed_cluster_count, only_lib1_count, only_lib2_count)
+        return proportion_mixed, proportion_1, proportion_2
     
     def cluster_sample_proportions(self,
                            n_samples: int = None,) -> float:
