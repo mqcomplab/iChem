@@ -588,7 +588,7 @@ class BitBirch:
         self,
         *,
         threshold: float = 0.65,
-        branching_factor: int = 50,
+        branching_factor: int = 1024,
         merge_criterion: str | MergeAcceptFunction | None = None,
         tolerance: float | None = None,
     ):
