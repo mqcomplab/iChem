@@ -1,9 +1,10 @@
 import numpy as np # type: ignore
 
 from ..bblean import pack_fingerprints, unpack_fingerprints
-from ..utils import binary_fps, rdkit_pairwise_matrix
+from ..utils import binary_fps
 from ..bblean import BitBirch
-from ..bblean.similarity import jt_isim_packed, estimate_jt_std, jt_isim_medoid, jt_stratified_sampling
+from ..bblean.similarity import jt_isim_packed, estimate_jt_std, jt_isim_medoid, jt_stratified_sampling, jt_sim_matrix_between_packed
+from ._libchem_aux import interiSIM, intraiSIM, MaxSum, MinSum
 
 class LibChem:
     """Class for handling chemical libraries, including loading SMILES,
@@ -131,17 +132,15 @@ class LibChem:
 
         return self.iSIM + factor * self.iSIM_sigma
     
-    def set_optimal_threshold(
+    def set_threshold(
             self,
             threshold: float = None,
     ) -> None:
         """Set a custom optimal threshold for clustering"""
         if threshold is None:
-            self.optimal_threshold = self._optimal_threshold()
+            self.threshold = self._optimal_threshold()
         else:
-            self.optimal_threshold = threshold
-
-        print(f"Optimal threshold set to: {self.optimal_threshold:.4f}")
+            self.threshold = threshold
     
     def cluster(
             self,
@@ -151,10 +150,12 @@ class LibChem:
             recluster: bool = True,
     ) -> None:
         """Cluster molecules using BitBirch algorithm based on iSIM and optimal threshold"""
-        if threshold is None:
-            threshold = self._optimal_threshold()
+        if threshold:
+            self.set_threshold(threshold)
+        if self.threshold is None:
+            self.set_threshold()
         
-        bb_object = BitBirch(threshold=threshold,
+        bb_object = BitBirch(threshold=self.threshold,
                              branching_factor=branching_factor,
                              merge_criterion=merge)
         bb_object.fit(self.fps_packed)
@@ -222,7 +223,8 @@ class LibChem:
     def get_cluster_samples(
             self,
             n_samples: int = 1000,
-            return_smiles: bool = True,
+            return_smiles: bool = False,
+            return_cluster_ids: bool = False,
         ) -> None:
         """Cluster a sample of molecules using stratified sampling"""
         if self.fps_packed is None:
@@ -233,31 +235,75 @@ class LibChem:
             raise ValueError("Number of samples exceeds number of molecules.")
         if not hasattr(self, 'clusters'):
             self.cluster()
-        if len(self.clusters) > n_samples:
-            raise ValueError("Number of clusters is greater than number of samples.")
         if len(self.clusters) == n_samples:
-            return self.get_cluster_medoids()
+            if return_cluster_ids and return_smiles:
+                medoids, smiles = self.get_cluster_medoids(return_smiles=True)
+                cluster_ids = list(range(len(self.clusters)))
+                return medoids, smiles, cluster_ids
+            if return_cluster_ids:
+                cluster_ids = list(range(len(self.clusters)))
+                medoids = self.get_cluster_medoids(return_smiles=False)
+                return medoids, cluster_ids
+            if return_smiles:
+                medoids, smiles = self.get_cluster_medoids(return_smiles=True)
+                return medoids, smiles
+            return self.get_cluster_medoids(return_smiles=return_smiles)
         
         sampled_fps = []
         sampled_smiles = []
         cluster_ids = []
-        for k, cluster in enumerate(self.clusters):
-            n_cluster = len(cluster)
-            fps_cluster = self.fps_packed[cluster]
-            n_sample_cluster = max(1, int(n_cluster * n_samples / self.n_molecules))
-            sampled_indices = jt_stratified_sampling(fps_cluster, n_samples=n_sample_cluster)
-            sampled_fps_ = fps_cluster[sampled_indices]
-            sampled_fps.extend(sampled_fps_)
+        # Compute the medoids (which will be included in the sample for sure)
+        medoids_fps, medoids_smiles = self.get_cluster_medoids(return_smiles=True)
+        # First case: number of clusters is larger than n_samples
+        if len(self.clusters) >= n_samples:
+            sampled_fps = medoids_fps[:n_samples]
             if return_smiles:
-                sampled_smiles_ = [self.smiles[cluster[i]] for i in sampled_indices]
-                sampled_smiles.extend(sampled_smiles_)
-            cluster_ids.extend([k] * n_sample_cluster)
-
-        if return_smiles:
-            return sampled_fps, sampled_smiles, cluster_ids
+                sampled_smiles = medoids_smiles[:n_samples]
+            if return_cluster_ids:
+                cluster_ids = list(range(n_samples))
         else:
-            return sampled_fps, cluster_ids
+            # Second case: number of clusters is smaller than n_samples
+            # include all medoids first
+            sampled_fps.extend(medoids_fps)
+            if return_smiles:
+                sampled_smiles.extend(medoids_smiles)
+            if return_cluster_ids:
+                cluster_ids.extend(list(range(len(self.clusters))))
 
+            # Update the number of samples to draw
+            n_samples_updated = n_samples - len(self.clusters)
+
+            # Stratified sampling from each cluster
+            for k, cluster in enumerate(self.clusters):
+                n_cluster = len(cluster)
+                fps_cluster = self.fps_packed[cluster]
+                n_sample_cluster = max(1, int(n_cluster * n_samples / self.n_molecules))
+                if n_samples_updated < n_sample_cluster - 1:
+                    n_sample_cluster = n_samples_updated + 1
+                sampled_indices = jt_stratified_sampling(fps_cluster, n_samples=n_sample_cluster)
+                n_samples_updated -= (n_sample_cluster - 1)
+                sampled_indices = sampled_indices[1:]
+
+                sampled_fps_ = fps_cluster[sampled_indices]
+                sampled_fps.extend(sampled_fps_)
+                
+                if return_smiles:
+                    sampled_smiles_ = [self.smiles[cluster[i]] for i in sampled_indices]
+                    sampled_smiles.extend(sampled_smiles_)
+                if return_cluster_ids:
+                    cluster_ids.extend([k] * len(sampled_indices))
+                    
+                if n_samples_updated <= 0:
+                    break
+
+        if return_cluster_ids and return_smiles:
+            return np.array(sampled_fps), sampled_smiles, cluster_ids
+        elif return_smiles:
+            return np.array(sampled_fps), sampled_smiles
+        elif return_cluster_ids:
+            return np.array(sampled_fps), cluster_ids
+        else:
+            return np.array(sampled_fps)
 
 class LibComparison:
     def __init__(self, 
@@ -271,15 +317,57 @@ class LibComparison:
         """Add a library to the comparison"""
         self.libraries[lib_name] = library
 
+    def compare_libraries(self,
+                        methodology: str = 'intraiSIM',
+                        lib1_name: str = None,
+                        lib2_name: str = None) -> float:
+        """Compare two libraries using specified methodology"""
+        if lib1_name == None and lib2_name == None and len(self.libraries) == 2:
+            lib1_name, lib2_name = list(self.libraries.keys())
+        if lib1_name not in list(self.libraries.keys()) or lib2_name not in list(self.libraries.keys()):
+            raise ValueError("Both libraries must be specified and exist in the comparison libraries.")
+        
+
+        lib1 = self.libraries[lib1_name]
+        lib2 = self.libraries[lib2_name]
+
+        fps1 = lib1.get_fingerprints(packed=True)
+        fps2 = lib2.get_fingerprints(packed=True)
+
+        if methodology == 'intraiSIM':
+            isim_value = intraiSIM(
+                np.array(fps1),
+                np.array(fps2),
+            )
+            return isim_value
+        if methodology == 'interiSIM':
+            return interiSIM(
+                np.array(fps1),
+                np.array(fps2),
+            )
+        if methodology == '_MaxSum': # Note: this is hidden from user to prevent large number of pairwise calculations
+            sim_matrix = jt_sim_matrix_between_packed(
+                np.array(fps1),
+                np.array(fps2),
+            )
+            return MaxSum(sim_matrix)
+        if methodology == '_MinSum': # Note: this is hidden from user to prevent large number of pairwise calculations
+            sim_matrix = jt_sim_matrix_between_packed(
+                np.array(fps1),
+                np.array(fps2),
+            )
+            return MinSum(sim_matrix)
+
     def compare_medoids(self, 
                         methodology: str = 'MaxSum',
                         lib1_name: str = None,
                         lib2_name: str = None) -> float:
         """Compare medoids of two libraries"""
-        if lib1_name not in list(self.libraries.keys()) or lib2_name not in list(self.libraries.keys()):
-            raise ValueError("Both libraries must be specified and exist in the comparison libraries.")
         if lib1_name == None and lib2_name == None and len(self.libraries) == 2:
             lib1_name, lib2_name = list(self.libraries.keys())
+        if lib1_name not in list(self.libraries.keys()) or lib2_name not in list(self.libraries.keys()):
+            raise ValueError("Both libraries must be specified and exist in the comparison libraries.")
+        
         
         lib1 = self.libraries[lib1_name]
         lib2 = self.libraries[lib2_name]
@@ -287,65 +375,31 @@ class LibComparison:
         fps1 = lib1.get_cluster_medoids(return_smiles=False)
         fps2 = lib2.get_cluster_medoids(return_smiles=False)
 
-        sim_matrix = rdkit_pairwise_matrix(
+        if methodology == 'MaxSum':
+            sim_matrix = jt_sim_matrix_between_packed(
             np.array(fps1),
             np.array(fps2),
         )
-
-        if methodology == 'MaxSum':
-            total_similarity = 0.0
-            for i in range(sim_matrix.shape[0]):
-                max_sim = np.max(sim_matrix[i, :])
-                total_similarity += max_sim
-            for k in range(sim_matrix.shape[1]):
-                max_sim = np.max(sim_matrix[:, k])
-                total_similarity += max_sim
-            medoids_maxsum = total_similarity / (sim_matrix.shape[0] + sim_matrix.shape[1])
-
-            return medoids_maxsum
+            return MaxSum(sim_matrix)
         
         if methodology == 'MinSum':
-            total_similarity = 0.0
-            for i in range(sim_matrix.shape[0]):
-                min_sim = np.min(sim_matrix[i, :])
-                total_similarity += min_sim
-            for k in range(sim_matrix.shape[1]):
-                min_sim = np.min(sim_matrix[:, k])
-                total_similarity += min_sim
-            medoids_minsum = total_similarity / (sim_matrix.shape[0] + sim_matrix.shape[1])
-
-            return medoids_minsum
+            sim_matrix = jt_sim_matrix_between_packed(
+            np.array(fps1),
+            np.array(fps2),
+        )
+            return MinSum(sim_matrix)
 
         if methodology == 'intraiSIM':
-            isim_value = calculate_isim(
-                np.array(fps1 + fps2),
-                n_ary='JT',
+            return intraiSIM(
+                np.array(fps1),
+                np.array(fps2),
             )
-            return isim_value
         
         if methodology == 'interiSIM':
-            n1 = len(fps1)
-            n2 = len(fps2)
-            n3 = n1 + n2
-
-            iSIM_1 = calculate_isim(
+            return interiSIM(
                 np.array(fps1),
-                n_ary='JT',
-            )
-
-            iSIM_2 = calculate_isim(
                 np.array(fps2),
-                n_ary='JT',
             )
-
-            iSIM_3 = calculate_isim(
-                np.array(fps1 + fps2),
-                n_ary='JT',
-            )
-
-            interiSIM = (iSIM_3 * n3 * (n3 - 1) - iSIM_1 * n1 * (n1 - 1) - iSIM_2 * n2 * (n2 - 1)) / (2 * n1 * n2)
-
-            return interiSIM
 
 
     def _cluster_medoid_mix(self,
