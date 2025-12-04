@@ -247,6 +247,54 @@ def jt_sim_matrix_packed(arr: NDArray[np.uint8]) -> NDArray[np.float64]:
     return matrix
 
 
+def jt_sim_matrix_between_packed(
+    fps1: NDArray[np.uint8], fps2: NDArray[np.uint8]
+) -> NDArray[np.float64]:
+    r"""Pairwise Tanimoto similarity matrix between rows of packed fps in
+    ``fps1`` and ``fps2``.
+
+    Returns an array of shape (len(fps1), len(fps2)) with the similarity
+    between each row of ``fps1`` and each row of ``fps2``.
+
+    Notes
+    -----
+    - If ``fps1 is fps2`` (same object), this delegates to
+      ``jt_sim_matrix_packed(fps1)`` which computes the symmetric matrix using
+      an upper-triangle approach.
+    - Both inputs are expected to be 2D arrays of packed fingerprints
+      (shape (N, F) where F is the packed byte-length). A ``ValueError`` is
+      raised for other shapes.
+    """
+    # Basic validation
+    if fps1.ndim != 2 or fps2.ndim != 2:
+        raise ValueError("Expected 2D arrays of packed fingerprints (shape (N, F)).")
+
+    # If exactly the same object, use the symmetric routine (more efficient).
+    if fps1 is fps2:
+        return jt_sim_matrix_packed(fps1)
+
+    n1 = len(fps1)
+    n2 = len(fps2)
+
+    # Fast return for empty inputs
+    if n1 == 0 or n2 == 0:
+        return np.empty((n1, n2), dtype=np.float64)
+
+    # Allocate output
+    mat = np.empty((n1, n2), dtype=np.float64)
+
+    # Loop over the smaller outer dimension to reduce number of calls to
+    # jt_sim_packed and (potentially) improve cache behaviour.
+    if n1 <= n2:
+        for i in range(n1):
+            mat[i, :] = jt_sim_packed(fps1[i], fps2)
+    else:
+        for j in range(n2):
+            mat[:, j] = jt_sim_packed(fps2[j], fps1)
+
+    return mat
+
+
 def estimate_jt_std(
     fps: NDArray[np.uint8],
     n_samples: int | None = None,
