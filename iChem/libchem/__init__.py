@@ -1,1 +1,2 @@
-from .libchem import LibChem, LibComparison
+from .libchem import LibChem
+from .libcomparison import LibComparison
