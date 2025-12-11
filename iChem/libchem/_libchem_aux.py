@@ -112,20 +112,21 @@ def combo_counts(flags: list, library_names: list[str] | None = None) -> tuple[d
         counts (lengths of the lists). Also includes a top-level 'mixed'
         key with the total number of mixed clusters.
     """
-    mapping: dict = {}
+    mapping: dict = {}        
     for idx, cluster_flags in enumerate(flags):
         # Normalize to a sorted tuple of unique library names
-        unique_libs = tuple(sorted(set(cluster_flags)))
+        unique_libs = np.unique(cluster_flags).tolist()
         if len(unique_libs) == 1:
             key = unique_libs[0]
+            if key not in mapping.keys():
+                mapping[key] = []
+            mapping[key].append(idx)
         else:
+            unique_libs.sort()
             key = "+".join(unique_libs)
-        mapping.setdefault(key, []).append(idx)
-
-    # Ensure single-library keys are present if requested
-    if library_names is not None:
-        for lib in library_names:
-            mapping.setdefault(lib, [])
+            if key not in mapping.keys():
+                mapping[key] = []
+            mapping[key].append(idx)
 
     # Build counts dict from mapping
     counts = {key: len(idxs) for key, idxs in mapping.items()}
@@ -135,3 +136,28 @@ def combo_counts(flags: list, library_names: list[str] | None = None) -> tuple[d
             counts.setdefault(lib, 0)
 
     return counts, mapping
+
+def composition_per_cluster(clustered_flags: list,
+                            top = 20) -> list[Counter]:
+    """Return the composition of each cluster as a list of Counters.
+
+    Parameters
+    ----------
+    clustered_flags : list
+        Iterable of per-cluster iterables/lists containing library-name flags
+        for each member of the cluster (e.g., ['libA', 'libA', 'libB']).
+
+    Returns
+    -------
+    compositions : list[Counter]
+        List of Counter objects, one per cluster, with counts of library
+        names in that cluster.
+    """
+    clustered_flags = clustered_flags[:top]
+
+    counts_per_cluster = []
+    for cluster in clustered_flags:
+        counter = Counter(cluster)
+        counts_per_cluster.append(counter)
+
+    return counts_per_cluster

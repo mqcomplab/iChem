@@ -47,8 +47,20 @@ def test_get_iSIM():
     assert isinstance(isim_sigma, float)
     assert isim_sigma == pytest.approx(0.07183, rel=1e-4)
 
-    lib.set_optimal_threshold()
-    assert lib.optimal_threshold == isim + 3.5 * isim_sigma
+    lib.set_threshold()
+    assert lib.threshold == isim + 3.5 * isim_sigma
 
-    lib.set_optimal_threshold(0.67)
-    assert lib.optimal_threshold == 0.67
+    lib.set_threshold(0.1128)
+    assert lib.threshold == 0.1128
+
+    medoids = lib.get_cluster_medoids(return_smiles=False)
+    assert len(medoids) == 5
+
+    medoids, smiles = lib.get_cluster_medoids(return_smiles=True)
+
+    assert smiles == ['C1=CC=C(C=C1)CC(C(=O)[O-])NC(=O)C(CC2=CNC3=CC=CC=C32)N',
+                      'CC(C)[NH2+]CC(O)COc1cccc2ccccc12',
+                      'CC1(C(N2C(S1)C(C2=O)NC(=O)C(C3=CC=CC=C3)N)C(=O)[O-])C',
+                      '[NH3+]CCCCCc1ccccn1',
+                      'O=C1C[NH+]=C(c2ccccc2)c2cc([N+](=O)[O-])ccc2N1']
+

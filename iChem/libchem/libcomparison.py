@@ -1,4 +1,5 @@
 import numpy as np # type: ignore
+from collections import Counter
 
 from ._libchem_aux import (
     interiSIM,
@@ -6,19 +7,17 @@ from ._libchem_aux import (
     MaxSum,
     MinSum,
     combo_counts,
-    cluster_class_counts,
-    cluster_classification,
-    calc_proportions,
+    composition_per_cluster,
 )
-from ..bblean.similarity import jt_sim_matrix_between_packed
+from ..bblean.similarity import jt_sim_matrix_between_packed, jt_stratified_sampling
 
 
 class LibComparison:
     def __init__(self, 
     ):
-        self.libraries = {}
-        self.library_names = []
-        self.combined_lib = None
+        self.libraries: dict = {}
+        self.library_names: list = []
+        self.combined_library: object = None
 
     def add_library(self,
             library,
@@ -72,7 +71,8 @@ class LibComparison:
     def compare_medoids(self, 
                         methodology: str = 'MaxSum',
                         lib1_name: str = None,
-                        lib2_name: str = None) -> float:
+                        lib2_name: str = None,
+                        stratified_samples: int = 50) -> float:
         """Compare medoids of two libraries"""
         if lib1_name == None and lib2_name == None and len(self.libraries) == 2:
             lib1_name, lib2_name = list(self.libraries.keys())
@@ -112,6 +112,38 @@ class LibComparison:
                 np.array(fps2),
             )
         
+    def compare_medoids_all(self,
+                            methodology: str = 'MaxSum',
+                            stratified_samples: int = 50) -> dict:
+        """Compare medoids of all libraries and return a results dictionary"""
+        results = []
+
+        for i, library_1 in enumerate(self.library_names):
+            result_line = []
+            for j, library_2 in enumerate(self.library_names):
+                if j < i:  # Use the symmetrical value
+                    result_line.append(results[j][i])
+                else:  # Compute the value
+                    k = self.compare_medoids(methodology=methodology,
+                                            lib1_name=library_1,
+                                            lib2_name=library_2)
+                    result_line.append(k)
+            results.append(result_line)
+
+        return results
+
+    def compare_medoids_heatmap(self,
+                                methodology: str = 'MaxSum',
+                                save_path: str = None,
+                                stratified_samples: int = 50) -> None:
+        """Generate a heatmap of medoid comparisons across all libraries"""
+        from ..visualization.plots import symmetric_heatmap
+        results = self.compare_medoids_all(methodology=methodology,
+                                           stratified_samples=stratified_samples)
+        symmetric_heatmap(results,
+                          labels=self.library_names,
+                          save_path=save_path)
+        
     def cluster_libraries(
             self,
             methodology: str = 'medoids',
@@ -122,17 +154,18 @@ class LibComparison:
     ) -> None:
         """Cluster the combined libraries using specified methodology"""
         if methodology == 'medoids':
-            self.combined_lib = self._cluster_medoid_mix(threshold=threshold,
+            combined_lib = self._cluster_medoid_mix(threshold=threshold,
                                                           lib_names=lib_names,
                                                           verbose=verbose)
-        if methodology == 'samples':
-            self.combined_lib = self._cluster_sample_mix(n_samples=n_samples,
+        elif methodology == 'samples':
+            combined_lib = self._cluster_sample_mix(n_samples=n_samples,
                                                          threshold=threshold,
                                                          lib_names=lib_names,
                                                          verbose=verbose)
         else:
             raise ValueError("Methodology must be either 'medoids' or 'samples'.")
 
+        self.combined_library = combined_lib
 
     def _cluster_medoid_mix(self,
                             threshold: float = None,
@@ -180,24 +213,27 @@ class LibComparison:
             packed = True,
         )
 
+        # Set the smiles and the flags
+        combined_lib.smiles = medoids_smiles
+        combined_lib.load_flags(medoids_flags)
+
         # Define what threshold to use
         if threshold is None:
             combined_lib.set_threshold()
             threshold_combined = combined_lib.threshold
-
-        # Check which threshold is the best to use
-        library_thresholds = [self.libraries[lib_name].threshold for lib_name in lib_names if self.libraries[lib_name].threshold is not None]
-        library_thresholds.append(threshold_combined)
-
-        threshold = max(library_thresholds)
+            library_thresholds = [self.libraries[name].threshold for name in lib_names if self.libraries[name].threshold is not None]
+            library_thresholds.append(threshold_combined)
+            threshold_final = max(library_thresholds)
+            if verbose:
+                print(f'Using clustering threshold: {threshold_final:.4f}')
+        else:
+            threshold_final = threshold
+            if verbose:
+                print(f'Using clustering threshold: {threshold_final:.4f}')
 
         # Do the clustering
-        combined_lib.set_threshold(threshold=threshold)
+        combined_lib.set_threshold(threshold=threshold_final)
         combined_lib.cluster()
-
-        # Set the smiles and the flags
-        combined_lib.smiles = medoids_smiles
-        combined_lib.load_flags(medoids_flags)
 
         return combined_lib
     
@@ -245,25 +281,28 @@ class LibComparison:
         from .libchem import LibChem
         combined_lib = LibChem()
         combined_lib.load_fingerprints(fingerprints=sampled_fps, packed=True)
+        
+        # set smiles and flags on combined lib
+        combined_lib.smiles = sampled_smiles
+        combined_lib.load_flags(sampled_flags)
 
         # determine threshold to use
         if threshold is None:
             combined_lib.set_threshold()
             threshold_combined = combined_lib.threshold
+            library_thresholds = [self.libraries[name].threshold for name in lib_names if self.libraries[name].threshold is not None]
+            library_thresholds.append(threshold_combined)
+            threshold_final = max(library_thresholds)
+            if verbose:
+                print(f'Using clustering threshold: {threshold_final:.4f}')
         else:
-            threshold_combined = threshold
-
-        library_thresholds = [self.libraries[name].threshold for name in lib_names if self.libraries[name].threshold is not None]
-        library_thresholds.append(threshold_combined)
-        threshold_final = max(library_thresholds)
+            threshold_final = threshold
+            if verbose:
+                print(f'Using clustering threshold: {threshold_final:.4f}')
 
         # cluster with the chosen threshold
         combined_lib.set_threshold(threshold=threshold_final)
         combined_lib.cluster()
-
-        # set smiles and flags on combined lib
-        combined_lib.smiles = sampled_smiles
-        combined_lib.load_flags(sampled_flags)
 
         return combined_lib
     
@@ -272,83 +311,76 @@ class LibComparison:
                             threshold: float = None,
                             n_samples: int = None,
                             methodology: str = 'medoids',
+                            verbose: bool = False,
                             ) -> dict:
         """Cluster the combined medoids of libraries and return counts mapping"""
-        if self.combined_lib is None:
-            self.cluster_libraries(methodology=methodology,
+        self.cluster_libraries(methodology=methodology,
                                    lib_names=lib_names,
                                    threshold=threshold,
-                                   n_samples=n_samples)
-        combined_lib = self.combined_lib
+                                   n_samples=n_samples,
+                                   verbose=verbose)
         # Use combo_counts helper to get exact mapping and counts
-        counts, combo_map = combo_counts(combined_lib.flags, library_names=list(self.library_names))
-        return counts
+        lib_names = lib_names if lib_names is not None else list(self.library_names)
+        counts, combo_map = combo_counts(self.combined_library.get_cluster_flags(), library_names=lib_names)
+        return counts, combo_map
     
-    def get_mixed_cluster_indices(self,
-                                  methodology: str = 'medoids',
-                                  lib_names: list[str] = None,) -> dict:
-        """Return mapping of combination keys -> cluster indices for mixed clusters"""
-        if self.combined_lib is None:
-            self.cluster_libraries(methodology=methodology, lib_names=lib_names)
-        combined_lib = self.combined_lib
-        _, combo_map = combo_counts(combined_lib.flags, library_names=list(self.library_names))
-        # Filter only mixed (keys with '+')
-        return {k: v for k, v in combo_map.items() if '+' in k}
+    def pie_chart_composition(self,
+                              lib_names: list[str] = None,
+                              ) -> dict:
+        """Generate a pie chart of the combined library cluster compositions"""
+        from ..visualization.plots import pie_chart_mixed_clusters
+        if self.combined_library is None:
+            raise ValueError("No combined library found. Please run cluster_libraries() first.")
+        labels = lib_names if lib_names is not None else list(self.library_names)
+        counts, _ = combo_counts(self.combined_library.get_cluster_flags(), library_names=labels)
+        pie_chart_mixed_clusters(counts)
 
-    def cluster_sample_proportions(self,
-                           n_samples: int = None,) -> float:
-        """Cluster a sample of combined medoids of libraries and compute proportions"""
-        if n_samples is None:
-            raise ValueError("Number of samples must be specified.")
+    def cluster_composition_counts(self,
+                                   top: int = 20,
+                                   ) -> list[Counter]:
+        """Get the composition of the top clusters in the combined library"""
+        if self.combined_library is None:
+            raise ValueError("No combined library found. Please run cluster_libraries() first.")
+        composition = composition_per_cluster(
+            self.combined_library.get_cluster_flags(),
+            top=top,
+        )
+        return composition
+    
+    def plot_cluster_composition(self,
+                                lib_names: list[str],
+                                top: int = 20,
+                                save_path: str = None,
+                                 ):
+        """Plot the composition of the top clusters in the combined library"""
+        from ..visualization.plots import bar_chart_library_comparison
+        if self.combined_library is None:
+            raise ValueError("No combined library found. Please run cluster_libraries() first.")
+        composition = composition_per_cluster(
+            self.combined_library.get_cluster_flags(),
+            top=top,
+        )
+        bar_chart_library_comparison(
+            values = composition,
+            lib_names = lib_names,
+            save_path = save_path,
+        )
 
-        # Get the clusters (combined LibChem) and compute counts
-        combined_lib = self._cluster_sample_mix(n_samples=n_samples)
-        # combined_lib is a LibChem instance
-        clusters = combined_lib.get_clusters()
-        n1 = 0  # unknown here, user should use cluster_class_counts directly if needed
-        mixed_cluster_count, only_lib1_count, only_lib2_count = cluster_class_counts(clusters, n1=n1)
-        proportion_mixed, proportion_1, proportion_2 = calc_proportions(mixed_cluster_count, only_lib1_count, only_lib2_count)
-        return proportion_mixed, proportion_1, proportion_2
-
-    def get_combined_lib_clusters(self,
-                                  methodology: str = 'samples',
-                                  n_samples: int = None,
-                                  return_type: str = 'all',) -> list[list[int]]:
-        """Get clusters from combined libraries based on specified methodology"""
-        if methodology == 'medoids':
-            combined_lib = self._cluster_medoid_mix()
-        elif methodology == 'samples':
-            if n_samples is None:
-                raise ValueError("Number of samples must be specified for 'samples' methodology.")
-            combined_lib = self._cluster_sample_mix(n_samples=n_samples)
-        else:
-            raise ValueError("Methodology must be either 'medoids' or 'samples'.")
-        
-        # combined_lib should be a LibChem instance with smiles and flags
-        combined_smiles = []
-        if hasattr(combined_lib, 'smiles') and combined_lib.smiles is not None:
-            combined_smiles = combined_lib.smiles
-        # Use cluster_classification to split clusters
-        clusters = combined_lib.get_clusters()
-        mixed, only_lib1, only_lib2 = cluster_classification(clusters, n1=0)
-
-        if return_type == 'all':
-            mixed_cluster_smiles = [[combined_smiles[idx] for idx in cluster] for cluster in mixed]
-            only_lib1_cluster_smiles = [[combined_smiles[idx] for idx in cluster] for cluster in only_lib1]
-            only_lib2_cluster_smiles = [[combined_smiles[idx] for idx in cluster] for cluster in only_lib2]
-            return mixed_cluster_smiles, only_lib1_cluster_smiles, only_lib2_cluster_smiles
-        elif return_type == 'mixed':
-            mixed_cluster_smiles = [[combined_smiles[idx] for idx in cluster] for cluster in mixed]
-            return mixed_cluster_smiles
-        elif return_type == 'only_lib1':
-            only_lib1_cluster_smiles = [[combined_smiles[idx] for idx in cluster] for cluster in only_lib1]
-            return only_lib1_cluster_smiles
-        elif return_type == 'only_lib2':
-            only_lib2_cluster_smiles = [[combined_smiles[idx] for idx in cluster] for cluster in only_lib2]
-            return only_lib2_cluster_smiles
-        elif return_type == 'both_libs':
-            only_lib1_cluster_smiles = [[combined_smiles[idx] for idx in cluster] for cluster in only_lib1]
-            only_lib2_cluster_smiles = [[combined_smiles[idx] for idx in cluster] for cluster in only_lib2]
-            return only_lib1_cluster_smiles, only_lib2_cluster_smiles
-        else:
-            raise ValueError("return_type must be 'all', 'mixed', 'only_lib1', 'only_lib2', or 'both_libs'.")
+    def cluster_visualization(self,
+                              cluster_number: int,
+                              save_path: str = None,
+                              ) -> object:
+        """Generate and return/display/save cluster visualization of combined library"""
+        if self.combined_library is None:
+            raise ValueError("No combined library found. Please run cluster_libraries() first.")
+        from ..visualization.plots import cluster_mix_MCS_image
+        img = cluster_mix_MCS_image(
+            cluster = self.combined_library.clusters[cluster_number],
+            smiles = self.combined_library.smiles,
+            flags = self.combined_library.flags,
+            n_samples = 25,
+            MCS_threshold = 0.75,
+            save_path = save_path,
+        )
+        if save_path is None:
+            return img
