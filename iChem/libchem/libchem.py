@@ -299,11 +299,15 @@ class LibChem:
     def get_cluster_medoids(
             self,
             return_smiles: bool = True,
+            threshold: float = None,
+            factor: float = 3.5,
     ) -> list[str]:
         """Retrieve the medoid SMILES string for each cluster
         
         Args:
             return_smiles (bool): Whether to return SMILES strings along with fingerprints. Defaults to True.
+            threshold (float): Custom threshold value for clustering. If None, uses the maximum threshold among libraries.
+            factor (float): Factor to adjust the clustering threshold in terms of standard deviations. Defaults to 3.5.
             
         Returns:
             list[str]: List of medoid fingerprints or (fingerprints, SMILES) tuples.
@@ -311,7 +315,7 @@ class LibChem:
         if self.smiles is None:
             raise ValueError("SMILES data not loaded.")
         if not hasattr(self, 'clusters'):
-            self.cluster()
+            self.cluster(threshold=threshold, factor=factor)
         
         fingerprints_medoids = []
         if return_smiles:
@@ -336,6 +340,8 @@ class LibChem:
             n_samples: int = 1000,
             return_smiles: bool = False,
             return_cluster_ids: bool = False,
+            threshold: float = None,
+            factor: float = 3.5,
         ) -> None:
         """Cluster a sample of molecules using stratified sampling from each cluster.
         
@@ -355,7 +361,7 @@ class LibChem:
         if self.n_molecules < n_samples:
             raise ValueError("Number of samples exceeds number of molecules.")
         if not hasattr(self, 'clusters'):
-            self.cluster()
+            self.cluster(threshold=threshold, factor=factor)
         if len(self.clusters) == n_samples:
             if return_cluster_ids and return_smiles:
                 medoids, smiles = self.get_cluster_medoids(return_smiles=True)
