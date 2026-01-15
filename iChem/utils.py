@@ -351,3 +351,17 @@ def pairwise_average_real(fingerprints: np.ndarray, n_ary: str = 'JT', return_st
         return average, np.std(pairwise_sims)
     else:
         return average
+    
+def load_smiles(file_path: str) -> list:
+    """
+    This function loads SMILES strings from a file.
+    
+    Parameters:
+    file_path: path to the file containing SMILES strings
+    
+    Returns:
+    smiles: list of SMILES strings
+    """
+    with open(file_path, 'r') as f:
+        smiles = [line.split('\t', 1)[0].split(' ')[0].strip() for line in f if line.strip()]
+    return smiles

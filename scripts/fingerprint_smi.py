@@ -1,6 +1,6 @@
-from rdkit import Chem
-from rdkit.Chem import MACCSkeys, rdFingerprintGenerator
-import numpy as np
+from rdkit import Chem # type: ignore
+from rdkit.Chem import MACCSkeys, rdFingerprintGenerator # type: ignore
+import numpy as np # type: ignore
 import argparse
 
 parser = argparse.ArgumentParser(description='Generate fingerprints from an SDF file and output a .npy')
