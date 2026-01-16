@@ -19,7 +19,11 @@ class LibChem:
             self, 
             smiles: str,
     ) -> None:
-        """Load SMILES from a .smi file"""
+        """Load SMILES from a .smi file
+        
+        Args:
+            smiles (str): Path to the .smi file containing SMILES strings.
+        """
         with open(smiles, 'r') as f:
             self.smiles = [line.split('\t', 1)[0].split(' ')[0].strip() for line in f if line.strip()]
         if self.fps_packed:
@@ -32,7 +36,12 @@ class LibChem:
             fingerprints : np.array, 
             packed: bool = True,
     ) -> None:
-        """Load fingerprints from a numpy array"""
+        """Load fingerprints from a numpy array
+        
+        Args:
+            fingerprints (np.array): Numpy array of fingerprints.
+            packed (bool): Whether the fingerprints are in packed format. Defaults to True.
+        """
         self.n_molecules = fingerprints.shape[0]
         if packed:
             self.fps_packed = fingerprints
@@ -52,7 +61,12 @@ class LibChem:
             fp_type: str = 'ECFP4',
             n_bits: int = 2048,
     ) -> None:
-        """Generate fingerprints from loaded SMILES"""
+        """Generate fingerprints from loaded SMILES. Saves the fingerprints in the class instance.
+        
+        Args:
+            fp_type (str): Type of fingerprint to generate. Defaults to 'ECFP4'. Other types: 'ECFP6', 'AP', 'RDKIT'.
+            n_bits (int): Number of bits for the fingerprint. Defaults to 2048.
+        """
         if self.smiles is None:
             raise ValueError("SMILES data not loaded.")
         
@@ -75,7 +89,14 @@ class LibChem:
             self,
             packed: bool = True,
     ) -> np.array:
-        """Retrieve fingerprints in packed or unpacked format"""
+        """Retrieve fingerprints in packed or unpacked format
+        
+        Args:
+            packed (bool): Whether to return fingerprints in packed format. Defaults to True.
+
+        Returns:
+            np.array: Numpy array of fingerprints.
+        """
         if self.fps_packed is None:
             raise ValueError("Fingerprints not loaded or generated.")
         
@@ -87,15 +108,23 @@ class LibChem:
     def get_flags(
             self,
     ) -> list:
-        """Retrieve the flags associated with each molecule"""
+        """Retrieve the flags associated with each molecule
+        
+        Returns:
+            list: List of flags.
+        """
         if self.flags is None:
             raise ValueError("Flags not loaded.")
         return self.flags
 
     def _calculate_iSIM(
             self,
-    ) -> np.array:
-        """Calculate iSIM similarity matrix from fingerprints"""
+    ) -> float:
+        """Calculate iSIM similarity matrix from fingerprints
+        
+        Returns:
+        float: iSIM similarity matrix.
+        """
         if self.fps_packed is None:
             raise ValueError("Fingerprints not loaded or generated.")
 
@@ -106,8 +135,12 @@ class LibChem:
     def _calculate_iSIM_sigma(
             self,
             n_sigma_samples: int = 50
-    ) -> np.array:
-        """Calculate iSIM similarity matrix with sigma adjustment from fingerprints"""
+    ) -> float:
+        """Calculate iSIM similarity matrix with sigma adjustment from fingerprints. Values are stored in the class instance.
+        
+        Args:
+            n_sigma_samples (int): Number of samples to estimate sigma. Defaults to 50.
+        """
         if self.fps_packed is None:
             raise ValueError("Fingerprints not loaded or generated.")
         
@@ -118,9 +151,12 @@ class LibChem:
 
     def get_iSIM(
             self,
-            sim_index: str = 'JT',
-    ) -> np.array:
-        """Retrieve the calculated iSIM similarity matrix"""
+    ) -> float:
+        """Retrieve the calculated iSIM similarity matrix
+
+        Returns:
+            float: iSIM Tanimotosimilarity value. 
+        """
         if not hasattr(self, 'iSIM'):
             self._calculate_iSIM()
 
@@ -130,7 +166,14 @@ class LibChem:
             self,
             n_sigma_samples: int = 50,
     ) -> float:
-        """Retrieve the calculated iSIM sigma value"""
+        """Retrieve the calculated iSIM sigma value
+
+        Args:
+            n_sigma_samples (int): Number of samples to estimate sigma. Defaults to 50.
+
+        Returns:
+            float: iSIM sigma value.
+        """
         if not hasattr(self, 'iSIM_sigma'):
             self._calculate_iSIM_sigma(n_sigma_samples=n_sigma_samples)
         return self.iSIM_sigma
@@ -139,7 +182,14 @@ class LibChem:
             self,
             factor: float = 3.5,
     ) -> float:
-        """Calculate the optimal threshold based on iSIM sigma"""
+        """Calculate the optimal threshold based on iSIM sigma
+        
+        Args:
+            factor (float): Multiplicative factor for sigma. Defaults to 3.5.
+            
+        Returns:
+            float: Optimal threshold value.
+        """
         if not hasattr(self, 'iSIM_sigma'):
             self._calculate_iSIM_sigma()
         if not hasattr(self, 'iSIM'):
@@ -150,25 +200,40 @@ class LibChem:
     def set_threshold(
             self,
             threshold: float = None,
+            factor : float = 3.5,
     ) -> None:
-        """Set a custom optimal threshold for clustering"""
+        """Set a custom optimal threshold for clustering
+        Args:
+            threshold (float): Custom threshold value. If None, calculates optimal threshold.
+            factor (float): Multiplicative factor for sigma when calculating optimal threshold. Defaults to 3.5.
+        """
         if threshold is None:
-            self.threshold = self._optimal_threshold()
+            self.threshold = self._optimal_threshold(factor=factor)
         else:
             self.threshold = threshold
     
     def cluster(
             self,
             threshold: float = None,
+            threshold_factor: float = 3.5,
             branching_factor: int = 1024,
             merge: str = 'diameter',
             recluster: bool = True,
     ) -> None:
-        """Cluster molecules using BitBirch algorithm based on iSIM and optimal threshold"""
+        """Cluster molecules using BitBirch algorithm based on iSIM and optimal threshold.
+        Clustered indexes are stored in the class instance.
+        
+        Args:
+            threshold (float): Custom threshold value for clustering. If None, uses optimal threshold.
+            threshold_factor (float): Multiplicative factor for sigma when calculating optimal threshold. Defaults to 3.5.
+            branching_factor (int): Branching factor for BitBirch algorithm. Defaults to 1024.
+            merge (str): Merge criterion for BitBirch algorithm. Defaults to 'diameter'.
+            recluster (bool): Whether to perform reclustering step. Defaults to True.
+        """
         if threshold:
             self.set_threshold(threshold)
         if self.threshold is None:
-            self.set_threshold()
+            self.set_threshold(factor=threshold_factor)
         
         bb_object = BitBirch(threshold=self.threshold,
                              branching_factor=branching_factor,
@@ -186,13 +251,20 @@ class LibChem:
     def get_clusters(
             self,
     ) -> list[list[int]]:
-        """Retrieve the clusters (indexes) formed after clustering"""
+        """Retrieve the clusters (indexes) formed after clustering
+        Returns:
+            list[list[int]]: List of clusters with molecule indexes.
+        """
         if not hasattr(self, 'clusters'):
             self.cluster()
         
         return self.clusters
     
     def get_cluster_flags(self) -> list[list[str]]:
+        """Retrieve the flags for each cluster
+        Returns:
+            list[list[str]]: List of clusters with flags.
+        """
         if not self.flags:
             raise ValueError("Flags not loaded.")
         if not hasattr(self, 'clusters'):
@@ -208,7 +280,11 @@ class LibChem:
     def get_cluster_smiles(
             self,
     ) -> list[list[str]]:
-        """Retrieve the SMILES strings for each cluster"""
+        """Retrieve the SMILES strings for each cluster
+        
+        Returns:
+            list[list[str]]: List of clusters with SMILES strings.
+        """
         if self.smiles is None:
             raise ValueError("SMILES data not loaded.")
         if not hasattr(self, 'clusters'):
@@ -220,15 +296,26 @@ class LibChem:
         
         return cluster_smiles
     
-    def get_cluster_medoids(
+    def save_cluster_medoids(
             self,
             return_smiles: bool = True,
-    ) -> list[str]:
-        """Retrieve the medoid SMILES string for each cluster"""
+            threshold: float = None,
+            factor: float = 3.5,
+    ) -> None:
+        """Retrieve the medoid SMILES string for each cluster
+        
+        Args:
+            return_smiles (bool): Whether to return SMILES strings along with fingerprints. Defaults to True.
+            threshold (float): Custom threshold value for clustering. If None, uses the maximum threshold among libraries.
+            factor (float): Factor to adjust the clustering threshold in terms of standard deviations. Defaults to 3.5.
+            
+        Returns:
+            list[str]: List of medoid fingerprints or (fingerprints, SMILES) tuples.
+        """
         if self.smiles is None:
             raise ValueError("SMILES data not loaded.")
         if not hasattr(self, 'clusters'):
-            self.cluster()
+            self.cluster(threshold=threshold, factor=factor)
         
         fingerprints_medoids = []
         if return_smiles:
@@ -239,22 +326,58 @@ class LibChem:
                 fingerprints_medoids.append(medoid_fingerprint)
                 smiles_medoids.append(self.smiles[cluster[medoid_index]])
             
-            return np.array(fingerprints_medoids), smiles_medoids
+            self.cluster_medoids_fps = np.array(fingerprints_medoids)
+            self.cluster_medoids_smiles = smiles_medoids
         else:
             for cluster in self.clusters:
                 fps_cluster = self.fps_packed[cluster]
                 medoid_index, medoid_fingerprint = jt_isim_medoid(fps_cluster)
                 fingerprints_medoids.append(medoid_fingerprint)
             
-            return np.array(fingerprints_medoids)
+            self.cluster_medoids_fps = np.array(fingerprints_medoids)
+        
+    def get_cluster_medoids(
+            self,
+            return_smiles: bool = True,
+            threshold: float = None,
+            factor: float = 3.5,
+    ) -> list[str]:
+        """Retrieve the medoid SMILES string for each cluster
+        
+        Args:
+            return_smiles (bool): Whether to return SMILES strings along with fingerprints. Defaults to True.
+            threshold (float): Custom threshold value for clustering. If None, uses the maximum threshold among libraries.
+            factor (float): Factor to adjust the clustering threshold in terms of standard deviations. Defaults to 3.5.
+            
+            
+        Returns:
+            list[str]: List of medoid fingerprints or (fingerprints, SMILES) tuples.
+        """
 
-    def get_cluster_samples(
+        if not hasattr(self, 'cluster_medoids_fps'):
+            self.save_cluster_medoids(return_smiles=return_smiles, threshold=threshold, factor=factor)
+
+        return (self.cluster_medoids_fps, self.cluster_medoids_smiles) if return_smiles else self.cluster_medoids_fps
+        
+    def save_cluster_samples(
             self,
             n_samples: int = 1000,
             return_smiles: bool = False,
             return_cluster_ids: bool = False,
+            threshold: float = None,
+            factor: float = 3.5,
         ) -> None:
-        """Cluster a sample of molecules using stratified sampling"""
+        """Cluster a sample of molecules using stratified sampling from each cluster.
+        
+        Args:
+            n_samples (int): Number of samples to draw. Defaults to 1000.
+            return_smiles (bool): Whether to return SMILES strings along with fingerprints. Defaults to False.
+            return_cluster_ids (bool): Whether to return cluster IDs along with fingerprints. Defaults to False.
+        Returns:
+            np.array: Sampled fingerprints.
+            list[str] (optional): Sampled SMILES strings.
+            list[int] (optional): Cluster IDs for each sampled molecule.
+        """
         if self.fps_packed is None:
             raise ValueError("Fingerprints not loaded or generated.")
         if self.smiles is None and return_smiles is True:
@@ -262,7 +385,7 @@ class LibChem:
         if self.n_molecules < n_samples:
             raise ValueError("Number of samples exceeds number of molecules.")
         if not hasattr(self, 'clusters'):
-            self.cluster()
+            self.cluster(threshold=threshold, factor=factor)
         if len(self.clusters) == n_samples:
             if return_cluster_ids and return_smiles:
                 medoids, smiles = self.get_cluster_medoids(return_smiles=True)
@@ -325,10 +448,58 @@ class LibChem:
                     break
 
         if return_cluster_ids and return_smiles:
-            return np.array(sampled_fps), sampled_smiles, cluster_ids
+            self.sample_cluster_fps = np.array(sampled_fps)
+            self.sample_cluster_smiles = sampled_smiles
+            self.sample_cluster_ids = cluster_ids
         elif return_smiles:
-            return np.array(sampled_fps), sampled_smiles
+            self.sample_cluster_fps = np.array(sampled_fps)
+            self.sample_cluster_smiles = sampled_smiles
         elif return_cluster_ids:
-            return np.array(sampled_fps), cluster_ids
+            self.sample_cluster_fps = np.array(sampled_fps)
+            self.sample_cluster_ids = cluster_ids
         else:
-            return np.array(sampled_fps)
+            self.sample_cluster_fps = np.array(sampled_fps)
+        
+    def get_cluster_samples(
+            self,
+            n_samples: int = 1000,
+            return_smiles: bool = False,
+            return_cluster_ids: bool = False,
+            threshold: float = None,
+            factor: float = 3.5,
+        ) -> np.array:
+        """Cluster a sample of molecules using stratified sampling from each cluster.
+        
+        Args:
+            n_samples (int): Number of samples to draw. Defaults to 1000.  
+            return_smiles (bool): Whether to return SMILES strings along with fingerprints. Defaults to False.
+            return_cluster_ids (bool): Whether to return cluster IDs along with fingerprints. Defaults to False.
+            threshold (float): Custom threshold value for clustering. If None, uses the maximum threshold among libraries.
+            factor (float): Factor to adjust the clustering threshold in terms of standard deviations. Defaults to 3.5.
+        Returns:
+            np.array: Sampled fingerprints.
+            list[str] (optional): Sampled SMILES strings.
+            list[int] (optional): Cluster IDs for each sampled molecule.
+        """
+
+        if not hasattr(self, 'sample_cluster_fps'):
+            self.save_cluster_samples(n_samples=n_samples,
+                                      return_smiles=return_smiles,
+                                      return_cluster_ids=return_cluster_ids,
+                                      threshold=threshold,
+                                      factor=factor)
+
+        if return_cluster_ids and return_smiles:
+            return self.sample_cluster_fps, self.sample_cluster_smiles, self.sample_cluster_ids
+        if return_cluster_ids:
+            return self.sample_cluster_fps, self.sample_cluster_ids
+        if return_smiles:
+            return self.sample_cluster_fps, self.sample_cluster_smiles
+        return self.sample_cluster_fps
+
+    
+    def empty_fps(
+            self,
+    ) -> None:
+        """Empty the fingerprints from memory."""
+        self.fps_packed = None
