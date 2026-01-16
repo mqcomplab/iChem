@@ -28,6 +28,8 @@
 import numpy as np # type: ignore
 from scipy import sparse # type: ignore
 
+_merge_accept_function = None
+
 def set_merge(merge_criterion):
     """
     Sets merge_accept function for merge_subcluster, based on user specified merge_criteria. 
@@ -37,7 +39,7 @@ def set_merge(merge_criterion):
     Parameters:
     -----------
     merge_criterion : str
-                        merge criterion to use. Currently only 'radius' is supported
+                        merge criterion to use. Currently only 'diameter' is supported
     features : int
                         number of features in the data. 
 
@@ -46,6 +48,7 @@ def set_merge(merge_criterion):
     merge_accept : function 
                         function that determines if cluster is accepted to merge based on the specified criteria
     """
+    global _merge_accept_function
 
     if merge_criterion == 'diameter':
         def merge_accept_function(threshold, new_ls, new_ss, new_n):
@@ -56,7 +59,7 @@ def set_merge(merge_criterion):
     else:
         raise ValueError(f"Unsupported merge criterion: '{merge_criterion}'. Currently only 'diameter' is supported.")
 
-    #globals()['merge_accept'] = merge_accept_function
+    _merge_accept_function = merge_accept_function
 
 def max_separation(X):
     """Finds two objects in X that are very separated
@@ -74,9 +77,9 @@ def max_separation(X):
     -------
     (mol1, mol2) : (int, int)
                    indices of mol1 and mol2
-    1 - sims_mol1 : np.ndarray
+    sims_mol1 : np.ndarray
                    Distances to mol1
-    1 - sims_mol2: np.ndarray
+    sims_mol2: np.ndarray
                    Distances to mol2
     These are needed for node1_dist and node2_dist in _split_node
     """
@@ -184,9 +187,9 @@ def _split_node(node, threshold, branching_factor):
             node.next_leaf_.prev_leaf_ = new_node2  
     
     # O(N) implementation of max separation
-    farthest_idx, node1_dist, node2_dist = max_separation(node.centroids_)    
-    # Notice that max_separation is returning similarities and not distances
-    node1_closer = node1_dist < node2_dist
+    farthest_idx, node1_sim, node2_sim = max_separation(node.centroids_)    
+    # Notice that max_separation is returning similarities
+    node1_closer = node1_sim > node2_sim
     # Make sure node1 is closest to itself even if all distances are equal.
     # This can only happen when all node.centroids_ are duplicates leading to all
     # distances between centroids being zero.
@@ -199,6 +202,11 @@ def _split_node(node, threshold, branching_factor):
         else:
             new_node2.append_subcluster(subcluster)
             new_subcluster2.update(subcluster)
+
+    # Break circular references and free memory
+    #node.subclusters_ = []
+    #del node      
+    #del new_node1, new_node2
     return new_subcluster1, new_subcluster2
 
 
@@ -293,7 +301,7 @@ class _BFNode:
 
         # If the subcluster has a child, we need a recursive strategy.
         if closest_subcluster.child_ is not None:
-            split_child = closest_subcluster.child_.insert_bf_subcluster(subcluster)
+            split_child = closest_subcluster.child_.insert_bf_subcluster(subcluster, merge_accept_function)
 
             if not split_child:
                 # If it is determined that the child need not be split, we
@@ -548,7 +556,7 @@ class BBReal():
         for sample in iter_func(X):
             #set_bits = np.sum(sample)
             subcluster = _BFSubcluster(linear_sum=sample.copy(), mol_indices = [self.index_tracker])
-            split = self.root_.insert_bf_subcluster(subcluster, merge_accept_function=globals()['merge_accept'])
+            split = self.root_.insert_bf_subcluster(subcluster, merge_accept_function=_merge_accept_function)
 
             if split:
                 new_subcluster1, new_subcluster2 = _split_node(
@@ -611,5 +619,7 @@ class BBReal():
             for subcluster in leaf.subclusters_:
                 clusters_mol_id.append(subcluster.mol_indices)
 
+        # Return sorted list of clusters based on the length of each cluster
+        clusters_mol_id = sorted(clusters_mol_id, key=lambda x: len(x), reverse=True)
         return clusters_mol_id
 

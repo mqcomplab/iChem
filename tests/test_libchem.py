@@ -64,3 +64,19 @@ def test_get_iSIM():
                       '[NH3+]CCCCCc1ccccn1',
                       'O=C1C[NH+]=C(c2ccccc2)c2cc([N+](=O)[O-])ccc2N1']
 
+def test_lib_comparison():
+    lib1 = LibChem()
+    lib1.load_smiles('tests/data/molecules.smi')
+    lib1.generate_fingerprints(fp_type='ECFP4', n_bits=2048)
+
+    lib2 = LibChem()
+    lib2.load_smiles('tests/data/molecules.smi')
+    lib2.generate_fingerprints(fp_type='ECFP4', n_bits=2048)
+
+    libcomp = LibComparison()
+    libcomp.add_library(lib1, 'Library 1')
+    libcomp.add_library(lib2, 'Library 2')
+
+    # Compare medoids
+    results = libcomp.compare_medoids()
+    assert np.average(results) == pytest.approx(1.0, rel=1e-4)

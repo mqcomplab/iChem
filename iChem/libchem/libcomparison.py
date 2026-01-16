@@ -399,6 +399,7 @@ class LibComparison:
     
     def pie_chart_composition(self,
                               lib_names: list[str] = None,
+                              save_path: str = None,
                               ) -> dict:
         """Generate a pie chart of the combined library cluster compositions.
         
@@ -410,10 +411,10 @@ class LibComparison:
             raise ValueError("No combined library found. Please run cluster_libraries() first.")
         labels = lib_names if lib_names is not None else list(self.library_names)
         counts, _ = combo_counts(self.combined_library.get_cluster_flags(), library_names=labels)
-        pie_chart_mixed_clusters(counts)
+        pie_chart_mixed_clusters(counts, save_path=save_path)
 
     def cluster_composition_counts(self,
-                                   top: int = 20,
+                                   top: int = 20
                                    ) -> list[Counter]:
         """Get the composition of the top clusters in the combined library.
         
