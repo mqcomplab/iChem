@@ -73,42 +73,8 @@ if __name__ == '__main__':
         LibComp = LibComparison()
         for lib, name in libchems:
             LibComp.add_library(lib, name)
-        counts, mapping = LibComp.cluster_classification_counts(verbose=True)
-
-        total_time = time.time() - start
-        print(f"Total parallel processing time: {total_time:.2f} seconds")
-        print("Parallelized library comparison complete")
-
-        LibComp.pie_chart_composition(save_path='library_composition_pie_chart.png')
-        LibComp.plot_cluster_composition(lib_names=[name for _, name in libchems], top=25, save_path='library_cluster_composition.png')
-
-        for key in mapping.keys():
-            LibComp.cluster_visualization(cluster_number=mapping[key][0],
-                                          save_path=f'cluster_{key}_structures.png')
-            
-        # For all the possible key combinations generate a pie chart
-        from itertools import combinations
-        names = [name for _, name in libchems]
-        for r in range(2, len(names) + 1):
-            for combo in combinations(names, r):
-                LibComp.cluster_libraries(lib_names=list(combo))
-                LibComp.pie_chart_composition(lib_names=list(combo),
-                                                      save_path=f'cluster_combination_{"_".join(combo)}.png')
-                
-        # Save the n, iSIM, iSIM - sigma, n_clusters, and threshold of each library comparison to a .csv
-        results = []
-        for lib, name in libchems:
-            iSIM = lib.get_iSIM()
-            iSIM_sigma = lib.get_iSIM_sigma()
-            n = lib.n_molecules
-            n_clusters = len(lib.get_cluster_medoids(return_smiles=False))
-            threshold = lib.threshold
-            results.append((name, n, iSIM, iSIM_sigma, n_clusters, threshold))
         
-        import pandas as pd
-        df = pd.DataFrame(results, columns=['Library', 'N', 'iSIM', 'iSIM_sigma', 'N_clusters', 'Threshold'])
-        df.to_csv('library_comparison_summary.csv', index=False)
-        logger.info("Library comparison summary saved to library_comparison_summary.csv")
+        LibComp.compare_medoids_heatmap(methodology='MaxSum', save_path='medoid_comparison_heatmap.png')
 
     except Exception as e:
         logger.error(f"Job failed with error: {str(e)}", exc_info=True)
