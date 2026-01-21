@@ -75,9 +75,10 @@ class LibChem:
             fp_type=fp_type,
             n_bits=n_bits,
             return_invalid=True,
+            packed=True
         )
 
-        self.fps_packed = pack_fingerprints(fps)
+        self.fps_packed = fps
         self.n_molecules = len(fps)
 
         if len(_invalid) > 0:
