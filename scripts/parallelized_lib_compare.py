@@ -3,7 +3,7 @@ import logging
 import argparse
 from iChem.libchem import LibChem, LibComparison
 import time
-import psutil
+import psutil # type: ignore
 import os
 
 parser = argparse.ArgumentParser(description='Compare libraries in parallel')
@@ -105,7 +105,7 @@ if __name__ == '__main__':
             threshold = lib.threshold
             results.append((name, n, iSIM, iSIM_sigma, n_clusters, threshold))
         
-        import pandas as pd
+        import pandas as pd # type: ignore
         df = pd.DataFrame(results, columns=['Library', 'N', 'iSIM', 'iSIM_sigma', 'N_clusters', 'Threshold'])
         df.to_csv('library_comparison_summary.csv', index=False)
         logger.info("Library comparison summary saved to library_comparison_summary.csv")
