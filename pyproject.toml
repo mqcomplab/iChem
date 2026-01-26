@@ -21,7 +21,9 @@ dependencies = [
     "scikit-learn",
     "numexpr>=2.8.0",
     "rich",
-    "psutil"
+    "psutil",
+    "plotly",
+    "nbformat>=4.2.0"
 ]
 
 [project.optional-dependencies]

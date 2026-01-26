@@ -8,7 +8,7 @@ import subprocess
 import platform
 import importlib
 
-import psutil
+import psutil # type: ignore
 
 __all__ = ["batched", "min_safe_uint"]
 

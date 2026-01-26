@@ -3,6 +3,7 @@
 import os
 import warnings
 
+from .fingerprints import pack_fingerprints
 from numpy.typing import NDArray # type: ignore
 import numpy as np # type: ignore
 
@@ -364,3 +365,16 @@ def jt_stratified_sampling(
     strata = np.array_split(sorted_indices, n_samples)
     # Get first index of each strata
     return np.array([s[0] for s in strata])
+
+def optimal_threshold(fps: np.ndarray,
+                      packed: bool = True,
+                      factor: float = 3.5,):
+    """Estimate an optimal threshold for clustering based on iSIM and iSIM-sigma."""
+
+    if not packed:
+        fps = pack_fingerprints(fps)
+    
+    isim_sigma = estimate_jt_std(fps)
+    isim = jt_isim_packed(fps)
+
+    return isim + factor * isim_sigma
