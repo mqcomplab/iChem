@@ -10,24 +10,24 @@ from rdkit import Chem
 from rdkit.Chem import Draw
 import iChem.bblean.similarity as iSIM
 
-def clusters_pop_plot(clusters: list,
+def clusters_pop_plot(bitbirch_obj,
                       save_path: str = None,
                       ):
 
-    """Plot the population of each cluster as a bar chart.
+    """Plot the population distribution of clusters as a stacked bar chart.
 
     Args:
-        clusters (list): List of cluster sizes.
+        bitbirch_obj: BitBirch clustering object with fitted clusters.
         save_path (str, optional): Path to save the plot. Defaults to None.
     """
 
     # Calculate the counts of the populations
-    lenghts = [len(c) for c in clusters]
-    n_1000 = sum(1 for lenght in lenghts if lenght > 1000)
-    n_100 = sum(1 for lenght in lenghts if lenght > 100)
-    n_10 = sum(1 for lenght in lenghts if lenght > 10)
-    n_1 = sum(1 for lenght in lenghts if lenght > 1)
-    n_0 = sum(1 for lenght in lenghts if lenght > 0)
+    populations = bitbirch_obj.get_cluster_populations(sort=True)
+    n_1000 = sum(1 for pop in populations if pop > 1000)
+    n_100 = sum(1 for pop in populations if pop > 100)
+    n_10 = sum(1 for pop in populations if pop > 10)
+    n_1 = sum(1 for pop in populations if pop > 1)
+    n_0 = sum(1 for pop in populations if pop > 0)
 
     plt.figure(figsize=(3, 4))
     plt.bar('Num_cluster', n_0, label='>0', color='blue')
@@ -38,6 +38,70 @@ def clusters_pop_plot(clusters: list,
     plt.legend()
     plt.ylabel('Number of Clusters')
     plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=400)
+    else:
+        plt.show()
+
+
+def clusters_pop_isim_plot(bitbirch_obj,
+                           save_path: str = None,
+                           figsize: tuple = (12, 6),
+                           top=20):
+    """Plot cluster population as bars with iSIM values on secondary axis.
+
+    Args:
+        bitbirch_obj: BitBirch clustering object with fitted clusters.
+        save_path (str, optional): Path to save the plot. Defaults to None.
+        figsize (tuple, optional): Figure size (width, height). Defaults to (12, 6).
+        top (int, optional): Number of top clusters to display. Defaults to 20."""
+
+    # Get cluster populations and iSIM values
+    all_populations = bitbirch_obj.get_cluster_populations(sort=True)
+    isim_values = bitbirch_obj.get_iSIM_clusters(sort=True)
+    
+    # Calculate statistics before limiting
+    total_clusters = len(all_populations)
+    n_singletons = sum(1 for pop in all_populations if pop == 1)
+
+    # Limit to top clusters for display
+    populations = all_populations[:top]
+    isim_values = isim_values[:top]
+
+    # Create figure and primary axis
+    fig, ax1 = plt.subplots(figsize=figsize)
+
+    # Plot cluster populations as bars
+    x = np.arange(len(populations))
+    bars = ax1.bar(x, populations, alpha=0.7, color='blue', label='Population')
+    ax1.set_xlabel('Cluster')
+    ax1.set_ylabel('Population', color='blue')
+    ax1.tick_params(axis='y', labelcolor='blue')
+    ax1.set_xticks(x)
+    ax1.set_xticklabels([str(i) for i in x], rotation=45, ha='right')
+
+    # Create secondary axis for iSIM values
+    ax2 = ax1.twinx()
+    line = ax2.plot(x, isim_values, color='darkorange', marker='o', 
+                    linewidth=2, markersize=6, label='iSIM')
+    ax2.set_ylabel('iSIM', color='darkorange')
+    ax2.tick_params(axis='y', labelcolor='darkorange')
+    ax2.set_ylim(0, 1)
+
+    # Add legends
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
+
+    # Add annotation with cluster statistics
+    annotation_text = f'Total Clusters: {total_clusters}\nSingletons: {n_singletons}'
+    ax1.text(0.98, 0.98, annotation_text, transform=ax1.transAxes,
+             fontsize=10, verticalalignment='top', horizontalalignment='right',
+             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+
+    plt.title('Cluster Population and iSIM')
+    fig.tight_layout()
 
     if save_path:
         plt.savefig(save_path, dpi=400)
@@ -287,4 +351,77 @@ def bar_chart_library_comparison(values: list[Counter],
         plt.savefig(save_path, dpi=400)
     else:
         plt.show()
+
+def venn_lib_comp(counts: dict,
+                  lib_names: list = None,
+                save_path: str = None):
+    """Generate a Venn diagram showing library overlaps. Supports up to 3 libraries.
+
+    Args:
+        counts (dict): Dictionary with library overlap counts.
+        save_path (str, optional): Path to save the Venn diagram. Defaults to None.
+
+    Returns:
+        fig: Matplotlib figure object.
+    """
+
+    from matplotlib_venn import venn2, venn3
+
+    # Get total number of clusters for calculation of percentages
+    total_clusters = sum(counts.values())
+
+    # Sort the counts dictionary labels
+    counts = dict(sorted(counts.items()))
+
+    # Pass the counts to percentage with only one decimal place
+    counts = {key: round((value / total_clusters) * 100, 1) for key, value in counts.items()}
+
+    # Change the count labels to be used in venn diagrams
+    new_counts = {}
+    for key in counts.keys():
+        if len(key.split('+')) == 3:
+            new_counts["111"] = counts[key]
+        elif len(key.split('+')) == 1:
+            if key == lib_names[0]:
+                new_counts["100"] = counts[key]
+            elif key == lib_names[1]:
+                new_counts["010"] = counts[key]
+            elif key == lib_names[2]:
+                new_counts["001"] = counts[key]
+        elif len(key.split('+')) == 2:
+            libs = key.split('+')
+            if lib_names[0] in libs and lib_names[1] in libs:
+                new_counts["110"] = counts[key]
+            elif lib_names[0] in libs and lib_names[2] in libs:
+                new_counts["101"] = counts[key]
+            elif lib_names[1] in libs and lib_names[2] in libs:
+                new_counts["011"] = counts[key]
+
+    # Plot the venn diagram
+    plt.figure(figsize=(5, 5))
+    if len(lib_names) == 2:
+        venn2(subsets=(new_counts.get("100", 0),
+                       new_counts.get("010", 0),
+                       new_counts.get("110", 0)),
+              set_labels=(f"{lib_names[0]}", f"{lib_names[1]}"),
+              set_colors=('blue', 'orange', 'green'),
+              alpha=0.75)
+    elif len(lib_names) == 3:
+        venn3(subsets=(new_counts.get("100", 0),
+                       new_counts.get("010", 0),
+                       new_counts.get("110", 0),
+                       new_counts.get("001", 0),
+                       new_counts.get("101", 0),
+                       new_counts.get("011", 0),
+                       new_counts.get("111", 0)),
+              set_labels=(f"{lib_names[0]}", f"{lib_names[1]}", f"{lib_names[2]}"),
+                set_colors=('blue', 'orange', 'green'),
+                alpha=0.75)
+    else:
+        raise ValueError("Only 2 or 3 libraries are supported for Venn diagrams.")
     
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=400)
+    else:
+        plt.show()

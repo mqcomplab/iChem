@@ -70,6 +70,7 @@ from .fingerprints import (
 from .similarity import (
     _jt_sim_arr_vec_packed,
     jt_most_dissimilar_packed,
+    jt_isim_from_sum,
     centroid_from_sum,
 )
 
@@ -900,6 +901,20 @@ class BitBirch:
     def get_cluster_mol_ids(self, sort: bool = True) -> list[list[int]]:
         r"""Get the indices of the molecules in each cluster"""
         return [s.mol_indices for s in self._get_leaf_bfs(sort=sort)]
+    
+    def get_linear_sums(self, sort: bool = True) -> list[NDArray[np.integer]]:
+        r"""Get a list of arrays with the linear sums of each cluster"""
+        return [s.linear_sum for s in self._get_leaf_bfs(sort=sort)]
+    
+    def get_cluster_populations(self, sort: bool = True) -> list[int]:
+        r"""Get a list with the number of molecules in each cluster"""
+        return [s.n_samples for s in self._get_leaf_bfs(sort=sort)]
+    
+    def get_iSIM_clusters(
+        self, sort: bool = True,
+    ) -> list[float]:
+        r"""Get a list with the iSIM similarity of each cluster"""
+        return [jt_isim_from_sum(ls, n) for ls, n in zip(self.get_linear_sums(sort=sort), self.get_cluster_populations(sort=sort))]
 
     def get_assignments(
         self, n_mols: int | None = None, sort: bool = True, check_valid: bool = True

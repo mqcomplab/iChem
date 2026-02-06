@@ -1,4 +1,0 @@
-iChem
-img
-scripts
-tests

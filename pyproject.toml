@@ -23,7 +23,8 @@ dependencies = [
     "rich",
     "psutil",
     "plotly",
-    "nbformat>=4.2.0"
+    "nbformat>=4.2.0",
+    "matplotlib_venn"
 ]
 
 [project.optional-dependencies]

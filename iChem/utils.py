@@ -43,7 +43,7 @@ def _get_generator(fp_type: str, n_bits: int):
 def binary_fps(smiles: list,
                fp_type: str = 'RDKIT',
                n_bits: int = 2048,
-               return_invalid: bool = True,
+               return_invalid: bool = False,
                packed: bool = False) -> np.ndarray:
     """
     This function generates binary fingerprints for the dataset.
@@ -84,7 +84,6 @@ def binary_fps(smiles: list,
         except:
           print('Invalid SMILES: ', smi)
           invalid_smiles.append(k)
-          exit(0)
 
         try:
             # Generate the fingerprint and store directly in array

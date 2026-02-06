@@ -320,6 +320,8 @@ def estimate_jt_std(
         # Heuristic: use at least 50 samples, or 1 per 10,000 fingerprints,
         # to balance statistical representativeness and computational efficiency
         n_samples = max(num_fps // 10_000, 50)
+    if n_samples >= num_fps:
+        n_samples = num_fps
     sample_idxs = jt_stratified_sampling(fps, n_samples, input_is_packed, n_features)
 
     # Work with only the sampled fingerprints
