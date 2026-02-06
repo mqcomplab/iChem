@@ -48,14 +48,16 @@ def clusters_pop_plot(bitbirch_obj,
 def clusters_pop_isim_plot(bitbirch_obj,
                            save_path: str = None,
                            figsize: tuple = (12, 6),
-                           top=20):
+                           top=20,
+                           initial=0):
     """Plot cluster population as bars with iSIM values on secondary axis.
 
     Args:
         bitbirch_obj: BitBirch clustering object with fitted clusters.
         save_path (str, optional): Path to save the plot. Defaults to None.
         figsize (tuple, optional): Figure size (width, height). Defaults to (12, 6).
-        top (int, optional): Number of top clusters to display. Defaults to 20."""
+        top (int, optional): Number of top clusters to display. Defaults to 20.
+        initial (int, optional): Starting index for clusters to display. Defaults to 0."""
 
     # Get cluster populations and iSIM values
     all_populations = bitbirch_obj.get_cluster_populations(sort=True)
@@ -66,8 +68,8 @@ def clusters_pop_isim_plot(bitbirch_obj,
     n_singletons = sum(1 for pop in all_populations if pop == 1)
 
     # Limit to top clusters for display
-    populations = all_populations[:top]
-    isim_values = isim_values[:top]
+    populations = all_populations[initial:top]
+    isim_values = isim_values[initial:top]
 
     # Create figure and primary axis
     fig, ax1 = plt.subplots(figsize=figsize)
