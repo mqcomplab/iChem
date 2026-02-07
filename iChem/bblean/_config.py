@@ -11,8 +11,8 @@ import os
 
 import numpy as np
 
-from bblean._memory import system_mem_gib
-from bblean.utils import (
+from ._memory import system_mem_gib
+from .utils import (
     _cpu_name,
     cpp_extensions_are_enabled,
     cpp_extensions_are_installed,
