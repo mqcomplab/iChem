@@ -59,12 +59,12 @@ import numpy as np
 from numpy.typing import NDArray
 
 
-from bblean._console import get_console
-from bblean._timer import Timer
-from bblean._config import DEFAULTS
-from bblean.utils import batched
-from bblean.bitbirch import BitBirch
-from bblean.fingerprints import _get_fps_file_num
+from ._console import get_console
+from ._timer import Timer
+from ._config import DEFAULTS
+from .utils import batched
+from .bitbirch import BitBirch
+from .fingerprints import _get_fps_file_num
 
 __all__ = ["run_multiround_bitbirch"]
 
