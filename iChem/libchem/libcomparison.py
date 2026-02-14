@@ -400,7 +400,7 @@ class LibComparison:
     def pie_chart_composition(self,
                               lib_names: list[str] = None,
                               save_path: str = None,
-                              ) -> dict:
+                              ) -> None:
         """Generate a pie chart of the combined library cluster compositions.
         
         Args:
@@ -412,6 +412,25 @@ class LibComparison:
         labels = lib_names if lib_names is not None else list(self.library_names)
         counts, _ = combo_counts(self.combined_library.get_cluster_flags(), library_names=labels)
         pie_chart_mixed_clusters(counts, save_path=save_path)
+
+    def venn_diagram_composition(self,
+                                lib_names: list[str] = None,
+                                save_path: str = None,
+                                ) -> None:
+        """Generate a Venn diagram of the combined library cluster compositions.
+
+        Args:
+            lib_names (list[str]): List of library names to include in the diagram, must be in the same order as used in clustering. If None, all libraries are used.
+            save_path (str): Path to save the Venn diagram image. If None, the diagram is displayed but not saved.
+
+        Returns:
+            None: Displays or saves the Venn diagram image.
+        """
+        from ..visualization.plots import venn_lib_comp
+        if self.combined_library is None:
+            raise ValueError("No combined library found. Please run cluster_libraries() first.")
+        counts, _ = combo_counts(self.combined_library.get_cluster_flags(), library_names=lib_names if lib_names is not None else self.library_names)
+        venn_lib_comp(counts, lib_names=lib_names if lib_names is not None else self.library_names, save_path=save_path)
 
     def cluster_composition_counts(self,
                                    top: int = 20
@@ -469,7 +488,7 @@ class LibComparison:
         """
         if self.combined_library is None:
             raise ValueError("No combined library found. Please run cluster_libraries() first.")
-        from ..visualization.plots import cluster_mix_MCS_image
+        from ..visualization.mol_images import cluster_mix_MCS_image
         img = cluster_mix_MCS_image(
             cluster = self.combined_library.clusters[cluster_number],
             smiles = self.combined_library.smiles,

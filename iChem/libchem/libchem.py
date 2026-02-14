@@ -216,7 +216,7 @@ class LibChem:
     def cluster(
             self,
             threshold: float = None,
-            threshold_factor: float = 3.5,
+            factor: float = 3.5,
             branching_factor: int = 1024,
             merge: str = 'diameter',
             recluster: bool = True,
@@ -226,7 +226,7 @@ class LibChem:
         
         Args:
             threshold (float): Custom threshold value for clustering. If None, uses optimal threshold.
-            threshold_factor (float): Multiplicative factor for sigma when calculating optimal threshold. Defaults to 3.5.
+            factor (float): Multiplicative factor for sigma when calculating optimal threshold. Defaults to 3.5.
             branching_factor (int): Branching factor for BitBirch algorithm. Defaults to 1024.
             merge (str): Merge criterion for BitBirch algorithm. Defaults to 'diameter'.
             recluster (bool): Whether to perform reclustering step. Defaults to True.
@@ -234,7 +234,7 @@ class LibChem:
         if threshold:
             self.set_threshold(threshold)
         if self.threshold is None:
-            self.set_threshold(factor=threshold_factor)
+            self.set_threshold(factor=factor)
         
         bb_object = BitBirch(threshold=self.threshold,
                              branching_factor=branching_factor,
