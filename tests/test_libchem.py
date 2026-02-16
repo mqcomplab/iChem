@@ -3,7 +3,7 @@ from iChem.bblean import pack_fingerprints, unpack_fingerprints
 import numpy as np # type: ignore
 import pytest # type: ignore
 from unittest.mock import patch
-from PIL import Image
+from PIL import Image # type: ignore
 np.random.seed(42)
 
 def test_load_smiles():
@@ -22,13 +22,13 @@ def test_load_fingerprints():
     lib = LibChem()
     data = np.load('tests/data/RDKIT_fps.npy')
     data = data.astype(np.uint8)
-    lib.load_fingerprints(data, packed=False)
+    lib.set_fingerprints(data, packed=False)
     assert lib.fps_packed.shape == (119, 256)
     assert lib.n_molecules == 119
     assert unpack_fingerprints(lib.fps_packed).shape == (119, 2048)
 
     with pytest.raises(ValueError):
-        lib.load_smiles('tests/data/molecules.smi')
+        lib.load_smiles('tests/data/mcule_natural_products.smi')
 
 def test_get_fingeprints():
     lib = LibChem()
@@ -55,6 +55,14 @@ def test_get_iSIM():
     lib.set_threshold(0.1128)
     assert lib.threshold == 0.1128
 
+    with pytest.raises(ValueError):
+        lib.save_cluster_medoids()
+
+    with pytest.raises(ValueError):
+        medoids = lib.get_cluster_medoids(return_smiles=False)
+
+    lib.cluster()
+
     medoids = lib.get_cluster_medoids(return_smiles=False)
     assert len(medoids) == 5
 
@@ -78,6 +86,13 @@ def test_lib_comparison():
     libcomp = LibComparison()
     libcomp.add_library(lib1, 'Library 1')
     libcomp.add_library(lib2, 'Library 2')
+
+    with pytest.raises(ValueError):
+        libcomp.compare_medoids(methodology='MaxSum')
+
+    lib1.cluster()
+    lib2.cluster()
+
     value = libcomp.compare_medoids(methodology='MaxSum')
     assert value == pytest.approx(1.0, rel=1e-4)
     value = libcomp.compare_libraries(methodology='intraiSIM')
@@ -86,12 +101,17 @@ def test_lib_comparison():
     lib3 = LibChem()
     lib3.load_smiles('tests/data/mcule_natural_products.smi')
     lib3.generate_fingerprints(fp_type='ECFP4', n_bits=2048)
+    lib3.cluster()
     libcomp.add_library(lib3, 'Library 3')
 
+    with pytest.raises(ValueError):
+        libcomp.compare_medoids(methodology='MaxSum')
+    
     results = libcomp.compare_medoids_all(methodology='MaxSum')
     assert results[0][0] == results[0][1]
     assert results[0][1] > results[0][2]
 
+    libcomp.cluster_libraries(methodology='medoids')
     counts, _ = libcomp.cluster_classification_counts()
     assert counts['Library 1+Library 2'] > counts['Library 2+Library 3']
     assert counts['Library 3'] > counts['Library 1'] + counts['Library 2'] + counts['Library 1+Library 2']
@@ -103,10 +123,12 @@ def test_cluster_visualization_and_composition():
     lib1 = LibChem()
     lib1.load_smiles('tests/data/molecules.smi')
     lib1.generate_fingerprints(fp_type='ECFP4', n_bits=2048)
+    lib1.cluster()
 
     lib2 = LibChem()
     lib2.load_smiles('tests/data/molecules.smi')
     lib2.generate_fingerprints(fp_type='ECFP4', n_bits=2048)
+    lib2.cluster()
 
     libcomp = LibComparison()
     libcomp.add_library(lib1, 'Library 1')
@@ -132,6 +154,7 @@ def test_get_cluster_samples():
     lib = LibChem()
     lib.load_smiles('tests/data/molecules.smi')
     lib.generate_fingerprints(fp_type='ECFP4', n_bits=2048)
+    lib.cluster()
     
     sampled_fps = lib.get_cluster_samples(n_samples=50)
     assert sampled_fps.shape[0] == 50
@@ -149,7 +172,7 @@ def test_get_cluster_flags():
     lib = LibChem()
     lib.load_smiles('tests/data/molecules.smi')
     lib.generate_fingerprints(fp_type='ECFP4', n_bits=2048)
-    lib.load_flags(['flag_' + str(i) for i in range(118)])
+    lib.set_flags(['flag_' + str(i) for i in range(118)])
     
     cluster_flags = lib.get_cluster_flags()
     assert isinstance(cluster_flags, list)
@@ -161,7 +184,7 @@ def test_load_flags_validation():
     lib.load_smiles('tests/data/molecules.smi')
     
     with pytest.raises(ValueError):
-        lib.load_flags(['flag1', 'flag2'])  # Mismatch with n_molecules
+        lib.set_flags(['flag1', 'flag2'])  # Mismatch with n_molecules
 
 def test_cluster_with_custom_threshold():
     """Test clustering with custom threshold"""
