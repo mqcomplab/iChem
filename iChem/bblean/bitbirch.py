@@ -78,11 +78,9 @@ if os.getenv("BITBIRCH_NO_EXTENSIONS"):
     from bblean.fingerprints import unpack_fingerprints as _unpack_fingerprints
 else:
     try:
-        # NOTE: There are small gains from using this fn but only ~3%, so don't warn for
-        # now if this fails, and don't expose it
-        from bblean._cpp_similarity import unpack_fingerprints as _unpack_fingerprints  # type: ignore # noqa
-    except ImportError:
         from .fingerprints import unpack_fingerprints as _unpack_fingerprints
+    except ImportError:
+        warnings.warn("Could not import unpack_fingerprints")
 
 __all__ = ["BitBirch"]
 

@@ -24,7 +24,8 @@ dependencies = [
     "psutil",
     "plotly",
     "nbformat>=4.2.0",
-    "matplotlib_venn"
+    "matplotlib_venn",
+    "upsetplot"
 ]
 
 [project.optional-dependencies]

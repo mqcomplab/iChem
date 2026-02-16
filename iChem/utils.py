@@ -3,7 +3,7 @@ import pandas as pd # type: ignore
 from .iSIM import calculate_isim
 from .iSIM.real import pair_jt, pair_rr, pair_sm
 from rdkit import Chem, DataStructs # type: ignore
-from rdkit.Chem import Descriptors, rdFingerprintGenerator, MACCSkeys # type: ignore
+from rdkit.Chem import Descriptors, rdFingerprintGenerator, MACCSkeys, SaltRemover # type: ignore
 
 """
 This module contains utility functions for the iChem package regarding fingerprint generation, and 
@@ -44,6 +44,7 @@ def binary_fps(smiles: list,
                fp_type: str = 'RDKIT',
                n_bits: int = 2048,
                return_invalid: bool = False,
+               standarize: bool = False,
                packed: bool = False) -> np.ndarray:
     """
     This function generates binary fingerprints for the dataset.
@@ -81,6 +82,8 @@ def binary_fps(smiles: list,
         # Generate the mol object
         try:
           mol = Chem.MolFromSmiles(smi)
+          if standarize:
+              mol = smiles_standarization(mol)
         except:
           print('Invalid SMILES: ', smi)
           invalid_smiles.append(k)
@@ -388,7 +391,7 @@ def pairwise_average_real(fingerprints: np.ndarray, n_ary: str = 'JT', return_st
     else:
         return average
     
-def load_smiles(file_path: str) -> list:
+def load_smiles(file_path: str, standarize: bool = False) -> list:
     """
     This function loads SMILES strings from a file.
     
@@ -400,4 +403,39 @@ def load_smiles(file_path: str) -> list:
     """
     with open(file_path, 'r') as f:
         smiles = [line.split('\t', 1)[0].split(' ')[0].strip() for line in f if line.strip()]
+
+    if standarize:
+        standardized_smiles = []
+        for smi in smiles:
+            try:
+                mol = Chem.MolFromSmiles(smi)
+                if mol is not None:
+                    standardized_mol = smiles_standarization(mol)
+                    standardized_smiles.append(Chem.MolToSmiles(standardized_mol))
+                else:
+                    print('Invalid SMILES: ', smi)
+            except Exception as e:
+                print(f'Error processing SMILES {smi}: {e}')
+        return standardized_smiles
+        
     return smiles
+
+def smiles_standarization(mol) -> Chem.Mol:
+    """
+    This function standardizes a molecule by removing salts and keeping the largest fragment.
+
+    Parameters:
+    mol: RDKit molecule object
+
+    Returns:
+    standardized_mol: standardized RDKit molecule object
+    """
+    remover = SaltRemover.SaltRemover()
+    mol = remover.StripMol(mol)
+    frags = Chem.GetMolFrags(mol, asMols=True)
+    if len(frags) > 1:
+        largest_frag = max(frags, key=lambda m: m.GetNumAtoms())
+        return largest_frag
+    else:
+        return mol
+    

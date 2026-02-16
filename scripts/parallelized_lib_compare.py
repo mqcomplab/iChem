@@ -79,20 +79,21 @@ if __name__ == '__main__':
         print(f"Total parallel processing time: {total_time:.2f} seconds")
         print("Parallelized library comparison complete")
 
-        LibComp.pie_chart_composition(save_path='library_composition_pie_chart.png')
+        LibComp.venn_diagram_composition(save_path='library_composition_venn.png')
+        LibComp.pie_chart_composition(save_path='library_composition_pie.png')
         LibComp.plot_cluster_composition(lib_names=[name for _, name in libchems], top=25, save_path='library_cluster_composition.png')
 
         for key in mapping.keys():
             LibComp.cluster_visualization(cluster_number=mapping[key][0],
                                           save_path=f'cluster_{key}_structures.png')
             
-        # For all the possible key combinations generate a pie chart
+        # For all the possible key combinations generate a venn diagram
         from itertools import combinations
         names = [name for _, name in libchems]
         for r in range(2, len(names) + 1):
             for combo in combinations(names, r):
                 LibComp.cluster_libraries(lib_names=list(combo))
-                LibComp.pie_chart_composition(lib_names=list(combo),
+                LibComp.venn_diagram_composition(lib_names=list(combo),
                                                       save_path=f'cluster_combination_{"_".join(combo)}.png')
                 
         # Save the n, iSIM, iSIM - sigma, n_clusters, and threshold of each library comparison to a .csv
@@ -104,6 +105,9 @@ if __name__ == '__main__':
             n_clusters = len(lib.get_cluster_medoids(return_smiles=False))
             threshold = lib.threshold
             results.append((name, n, iSIM, iSIM_sigma, n_clusters, threshold))
+
+        # Do the MaxSum heat map
+        LibComp.compare_medoids_heatmap(methodology='MaxSum', save_path='library_maxsum_heatmap.png')
         
         import pandas as pd # type: ignore
         df = pd.DataFrame(results, columns=['Library', 'N', 'iSIM', 'iSIM_sigma', 'N_clusters', 'Threshold'])
