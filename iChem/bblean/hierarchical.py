@@ -6,6 +6,7 @@ def hierarchical_bitbirch(fingerprints,
                           threshold=None,
                           steps=5,
                           branching_factor=1024,
+                          return_threshold=False,
                           **bitbirch_kwargs):
     """Hierarchical clustering using BitBirch.
     It initially clusters the data and the reclusters the BF nodes hierarchically by decreasing the threshold.
@@ -40,7 +41,6 @@ def hierarchical_bitbirch(fingerprints,
             bb_object.fit(fingerprints)
 
             cluster_ids[k] = bb_object.get_cluster_mol_ids()
-            print(f"Step {k}: Threshold = {bb_object.threshold:.3f}, Number of clusters = {len(cluster_ids[k])}")
         else:
             bb_object.recluster_inplace(iterations=1,
                                         extra_threshold=threshold - bb_object.threshold,
@@ -48,9 +48,10 @@ def hierarchical_bitbirch(fingerprints,
             
             cluster_ids[k] = bb_object.get_cluster_mol_ids()
             # Print number of clusters at this step
-            print(f"Step {k}: Threshold = {bb_object.threshold:.3f}, Number of clusters = {len(cluster_ids[k])}")
 
+    if return_threshold:
+        return cluster_ids, initial_threshold
+    
     return cluster_ids
-
 
 

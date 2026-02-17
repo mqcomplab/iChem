@@ -368,7 +368,17 @@ def draw_tree(node, ax):
         draw_tree(child, ax)
 
 
-def dendrogram_bitbirch(hierarchical_clusters):
+def dendrogram_bitbirch(hierarchical_clusters, initial_threshold=None):
+    """Plot dendrogram from hierarchical clustering results.
+    
+    Parameters
+    ----------
+    hierarchical_clusters : dict
+        Dictionary where keys are step indices and values are lists of clusters.
+    initial_threshold : float, optional
+        The initial similarity threshold used. If provided, the y-axis will show
+        distance (1 - threshold) ranging from (1 - initial_threshold) to 1.
+    """
     root = build_tree(hierarchical_clusters)
     
     fig, ax = plt.subplots(figsize=(8, 5))
@@ -377,33 +387,87 @@ def dendrogram_bitbirch(hierarchical_clusters):
     from itertools import count
     assign_x_positions(root, count())
     
+    # Convert heights to distance if threshold is provided
+    if initial_threshold is not None:
+        # Determine number of steps from the cluster data
+        n_steps = max(hierarchical_clusters.keys()) + 1
+        
+        # Create mapping from step to distance (1 - threshold)
+        thresholds = np.linspace(initial_threshold, 0, num=n_steps)
+        distances = 1 - thresholds
+        
+        # Convert node heights to distances
+        def convert_heights(node):
+            step = int(node.height)
+            if step >= len(distances):
+                node.height = distances[-1]
+            else:
+                node.height = distances[step]
+            for child in node.children:
+                convert_heights(child)
+        
+        convert_heights(root)
+    
     # Draw structure
     draw_tree(root, ax)
     
-    # Add vertical line at root as visual extension
-    ax.plot([root.x, root.x], [root.height, root.height + 0.5], 
-           'k-', linewidth=1)
+    # Configure y-axis and calculate positioning based on whether we have distance information
+    if initial_threshold is not None:
+        # Set y-axis limits from (1 - initial_threshold) to 1.0
+        min_distance = 1 - initial_threshold
+        max_distance = 1.0  # Maximum distance is always 1.0
+        
+        # Add small margin only at bottom for labels
+        y_margin = 0.08 * (max_distance - min_distance)
+        
+        # Extension at top for tick visibility
+        extension = 0.03 * (max_distance - min_distance)
+        
+        ax.set_ylim(min_distance - y_margin, max_distance + extension)
+        
+        ax.spines['left'].set_visible(True)
+        ax.spines['left'].set_bounds(min_distance, max_distance)  # Spine from min_distance to 1.0
+        ax.tick_params(axis='y', which='both', left=True, labelleft=True)
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.spines['bottom'].set_visible(False)
+        
+        # Calculate label position
+        y_pos = min_distance - 0.04 * (max_distance - min_distance)
+        
+        # Vertical line extends from root to max_distance (1.0)
+        ax.plot([root.x, root.x], [root.height, max_distance], 
+               'k-', linewidth=1)
+    else:
+        # Original behavior for non-distance mode
+        extension = 0.5
+        y_margin = 0.5
+        max_distance = root.height
+        ax.set_ylim(-y_margin, root.height + extension)
+        ax.set_yticks([])
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        y_pos = -0.2
+        
+        # Add vertical line at root as visual extension
+        ax.plot([root.x, root.x], [root.height, root.height + extension], 
+               'k-', linewidth=1)
     
     # Add bottom labels (only step 0 clusters)
     def add_labels(node):
         if not node.children:
             label = "\n".join(str(i) for i in sorted(node.members))
-            ax.text(node.x, -0.2, label,
-                    ha='center', va='top')
+            ax.text(node.x, y_pos, label,
+                    ha='center', va='top', fontsize=8)
         else:
             for child in node.children:
                 add_labels(child)
     
     add_labels(root)
     
-    # Clean formatting
+    # Set up axes
     ax.set_xticks([])
-    ax.set_yticks([])
-    ax.set_ylim(-0.5, root.height + 0.5)
     ax.set_xlim(-1, None)
-    
-    for spine in ax.spines.values():
-        spine.set_visible(False)
     
     plt.tight_layout()
     plt.show()
