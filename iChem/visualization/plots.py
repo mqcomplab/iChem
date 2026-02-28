@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt # type: ignore
-import numpy as np
+import numpy as np # type: ignore
 import pandas as pd # type: ignore
 import seaborn as sns # type: ignore
 from seaborn import heatmap # type: ignore
@@ -19,7 +19,7 @@ def clusters_pop_plot(bitbirch_obj,
     """
 
     # Calculate the counts of the populations
-    populations = bitbirch_obj.get_cluster_populations(sort=True)
+    populations = bitbirch_obj.get_cluster_populations()
     n_1000 = sum(1 for pop in populations if pop > 1000)
     n_100 = sum(1 for pop in populations if pop > 100)
     n_10 = sum(1 for pop in populations if pop > 10)
@@ -57,8 +57,8 @@ def clusters_pop_isim_plot(bitbirch_obj,
         initial (int, optional): Starting index for clusters to display. Defaults to 0."""
 
     # Get cluster populations and iSIM values
-    all_populations = bitbirch_obj.get_cluster_populations(sort=True)
-    isim_values = bitbirch_obj.get_iSIM_clusters(sort=True)
+    all_populations = bitbirch_obj.get_cluster_populations()
+    isim_values = bitbirch_obj.get_iSIM_clusters()
     
     # Calculate statistics before limiting
     total_clusters = len(all_populations)

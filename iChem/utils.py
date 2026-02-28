@@ -107,7 +107,10 @@ def binary_fps(smiles: list,
     else:
         return fingerprints
     
-def count_fps(smiles: list, fp_type: str = 'RDKIT', n_bits: int = 2048, return_invalid: bool = True) -> np.ndarray:
+def count_fps(smiles: list,
+              fp_type: str = 'RDKIT',
+              n_bits: int = 2048,
+              return_invalid: bool = True) -> np.ndarray:
     """
     This function generates count-based fingerprints for the dataset.
     
@@ -237,6 +240,35 @@ def minmax_norm(fps):
 
     # Return the normalized data as a numpy array
     return df.to_numpy()
+
+def normalize_fps(fps):
+    """
+    This function performs min-max normalization on the dataset without using pandas.
+    For columns with all zero values, the normalized value remains zero.
+
+    Parameters:
+    fps: numpy array of fingerprints
+
+    Returns:
+    fps: normalized numpy array of fingerprints
+    """
+    # Convert to numpy array if not already
+    fps = np.array(fps, dtype=float)
+
+    # Calculate the minimum and maximum for each column
+    col_min = np.min(fps, axis=0)
+    col_max = np.max(fps, axis=0)
+
+    # Avoid division by zero: identify columns where min == max
+    range_vals = col_max - col_min
+    non_zero_range = range_vals != 0
+
+    # Perform min-max normalization only for columns with non-zero range
+    normalized_fps = np.zeros_like(fps, dtype=float)
+    normalized_fps[:, non_zero_range] = (fps[:, non_zero_range] - col_min[non_zero_range]) / range_vals[non_zero_range]
+
+    # Columns with zero range (all values are the same) remain zero
+    return normalized_fps
 
 def npy_to_rdkit(fps_np):
     """

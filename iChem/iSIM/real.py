@@ -14,7 +14,7 @@ import numpy as np
 
 """                         REAL-VALUED PAIRWISE SIMILARITY FUNCTIONS                                 """
 
-def pairwise_average_real(fingerprints, n_ary = 'JT'):
+def pairwise_average_real(fingerprints, n_ary = 'JT', return_std = False):
     """
     This function computes the pairwise average similarity between all objects in the dataset for real numbers.
     
@@ -31,14 +31,15 @@ def pairwise_average_real(fingerprints, n_ary = 'JT'):
 
     # Compute the pairwise similarities
     pairwise_sims = []
-    for i in range(len(fingerprints)):
-        for j in range(len(fingerprints)):
-            if i != j:
-                pairwise_sims.append(pair_func(fingerprints[i], fingerprints[j]))
+    for i in range(len(fingerprints) -1):
+        for j in range(i+1, len(fingerprints)):
+            pairwise_sims.append(pair_func(fingerprints[i], fingerprints[j]))
 
     # Compute the average similarity
     average = np.mean(pairwise_sims)
-    
+    if return_std:
+        std = np.std(pairwise_sims)
+        return average, std
     return average
 
 def pair_jt(fp1, fp2):

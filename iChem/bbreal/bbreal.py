@@ -27,8 +27,7 @@
 
 import numpy as np # type: ignore
 from scipy import sparse # type: ignore
-
-_merge_accept_function = None
+from ._bbreal import calc_centroid, max_separation, jt_isim_real
 
 def set_merge(merge_criterion):
     """
@@ -48,8 +47,6 @@ def set_merge(merge_criterion):
     merge_accept : function 
                         function that determines if cluster is accepted to merge based on the specified criteria
     """
-    global _merge_accept_function
-
     if merge_criterion == 'diameter':
         def merge_accept_function(threshold, new_ls, new_ss, new_n):
             ij_array = 0.5 * (new_ls ** 2 - new_ss)
@@ -58,77 +55,9 @@ def set_merge(merge_criterion):
             return ij/(inners - ij) >= threshold
     else:
         raise ValueError(f"Unsupported merge criterion: '{merge_criterion}'. Currently only 'diameter' is supported.")
-
-    _merge_accept_function = merge_accept_function
-
-def max_separation(X):
-    """Finds two objects in X that are very separated
-    This is an approximation (not guaranteed to find
-    the two absolutely most separated objects), but it is
-    a very robust O(N) implementation. Quality of clustering
-    does not diminish in the end.
     
-    Algorithm:
-    a) Find centroid of X
-    b) mol1 is the molecule most distant from the centroid
-    c) mol2 is the molecule most distant from mol1
-    
-    Returns
-    -------
-    (mol1, mol2) : (int, int)
-                   indices of mol1 and mol2
-    sims_mol1 : np.ndarray
-                   Distances to mol1
-    sims_mol2: np.ndarray
-                   Distances to mol2
-    These are needed for node1_dist and node2_dist in _split_node
-    """
-    # Get the centroid of the set
-    n_samples = len(X)
-    linear_sum = np.sum(X, axis = 0)
-    centroid = calc_centroid(linear_sum, n_samples)
+    globals()['merge_accept_function'] = merge_accept_function
 
-    # Get the similarity of each molecule to the centroid
-    mols_dot_products = np.sum(X**2, axis = 1)
-    mols_centroid_dot_products = np.dot(X, centroid)
-    centroid_dot_product = np.sum(centroid**2)
-    sims_med = mols_centroid_dot_products / (mols_dot_products + centroid_dot_product - mols_centroid_dot_products)
-
-    # Get the least similar molecule to the centroid
-    mol1 = np.argmax(sims_med)
-
-    # Get the similarity of each molecule to mol1
-    mol1_mol1_dot_product = mols_dot_products[mol1]
-    mols_mol1_dot_products = np.dot(X, X[mol1])
-    sims_mol1 = mols_mol1_dot_products / (mols_dot_products + mol1_mol1_dot_product - mols_mol1_dot_products)
-
-    # Get the least similar molecule to mol1
-    mol2 = np.argmax(sims_mol1)
-
-    # Get the similarity of each molecule to mol2
-    mol2_mol2_dot_product = mols_dot_products[mol2]
-    mols_mol2_dot_products = np.dot(X, X[mol2])
-    sims_mol2 = mols_mol2_dot_products / (mols_dot_products + mol2_mol2_dot_product - mols_mol2_dot_products)
-    
-    return (mol1, mol2), sims_mol1, sims_mol2
-
-def calc_centroid(linear_sum, n_samples):
-    """Calculates centroid
-    
-    Parameters
-    ----------
-    
-    linear_sum : np.ndarray
-                 Sum of the elements column-wise
-    n_samples : int
-                Number of samples
-                
-    Returns
-    -------
-    centroid : np.ndarray
-               Centroid fingerprints of the given set
-    """
-    return linear_sum/n_samples
 
 def _iterate_sparse_X(X):
     """This little hack returns a densified row when iterating over a sparse
@@ -204,9 +133,9 @@ def _split_node(node, threshold, branching_factor):
             new_subcluster2.update(subcluster)
 
     # Break circular references and free memory
-    #node.subclusters_ = []
-    #del node      
-    #del new_node1, new_node2
+    node.subclusters_ = []
+    del node      
+    del new_node1, new_node2
     return new_subcluster1, new_subcluster2
 
 
@@ -284,7 +213,7 @@ class _BFNode:
         self.centroids_[ind] = new_subcluster1.centroid_
         self.append_subcluster(new_subcluster2)
 
-    def insert_bf_subcluster(self, subcluster, merge_accept_function):
+    def insert_bf_subcluster(self, subcluster):
         """Insert a new subcluster into the node."""
         if not self.subclusters_:
             self.append_subcluster(subcluster)
@@ -296,12 +225,12 @@ class _BFNode:
         # subclusters so that we can insert our new subcluster.
         a = np.dot(self.centroids_, subcluster.centroid_)
         sim_matrix = a / (np.sum(self.centroids_**2, axis = 1) + np.sum(subcluster.centroid_**2) - a)
-        closest_index = np.argmin(sim_matrix)
+        closest_index = np.argmax(sim_matrix)
         closest_subcluster = self.subclusters_[closest_index]
 
         # If the subcluster has a child, we need a recursive strategy.
         if closest_subcluster.child_ is not None:
-            split_child = closest_subcluster.child_.insert_bf_subcluster(subcluster, merge_accept_function)
+            split_child = closest_subcluster.child_.insert_bf_subcluster(subcluster)
 
             if not split_child:
                 # If it is determined that the child need not be split, we
@@ -330,7 +259,7 @@ class _BFNode:
 
         # good to go!
         else:
-            merged = closest_subcluster.merge_subcluster(subcluster, self.threshold, merge_accept_function)
+            merged = closest_subcluster.merge_subcluster(subcluster, self.threshold)
             if merged:
                 self.centroids_[closest_index] = closest_subcluster.centroid_
                 self.init_centroids_[closest_index] = closest_subcluster.centroid_
@@ -402,7 +331,7 @@ class _BFSubcluster:
         self.centroid_ = calc_centroid(self.linear_sum_, self.n_samples_)
         self.sq_sum += subcluster.sq_sum
 
-    def merge_subcluster(self, nominee_cluster, threshold, merge_accept_function):
+    def merge_subcluster(self, nominee_cluster, threshold):
         """Check if a cluster is worthy enough to be merged. If
         yes then merge.
         """
@@ -556,7 +485,7 @@ class BBReal():
         for sample in iter_func(X):
             #set_bits = np.sum(sample)
             subcluster = _BFSubcluster(linear_sum=sample.copy(), mol_indices = [self.index_tracker])
-            split = self.root_.insert_bf_subcluster(subcluster, merge_accept_function=_merge_accept_function)
+            split = self.root_.insert_bf_subcluster(subcluster)
 
             if split:
                 new_subcluster1, new_subcluster2 = _split_node(
@@ -573,11 +502,85 @@ class BBReal():
                 self.root_.append_subcluster(new_subcluster1)
                 self.root_.append_subcluster(new_subcluster2)
             self.index_tracker += 1
-
-        centroids = np.concatenate([leaf.centroids_ for leaf in self._get_leaves()])
-        self.subcluster_centers_ = centroids
-        self._n_features_out = self.subcluster_centers_.shape[0]
         
+        self.first_call = False
+        return self
+    
+    def fit_BFs(self, X):
+        """Method to fit a BitBirch Real model from a list of BitFeatures.
+        
+        Parameters:
+        -----------
+        
+        X : list of shape (n_BFs, 4)
+            List of BitFeatures to fit the model from. Computed by a previous bbreal model.
+
+        Returns:
+        -------
+        self
+        """
+
+        # Check if the inpute is a list of BitFeatures
+        if not isinstance(X, list):
+            raise TypeError("X must be a list of BitFeatures.")
+        if len(X[0]) != 4:
+            raise ValueError("Each BitFeature must be a tuple of (n_samples_, linear_sum_, sq_sum, mol_indices).")
+        
+        # Set parameters
+        threshold = self.threshold
+        branching_factor = self.branching_factor
+
+        n_features = len(X[0][1])
+        d_type = X[0][1].dtype
+
+
+        # Initialize the tree
+        if self.first_call:
+            self.root_ = _BFNode(
+                threshold=threshold,
+                branching_factor=branching_factor,
+                is_leaf=True,
+                n_features=n_features,
+                dtype=d_type,
+            )
+    
+            self.dummy_leaf_ = _BFNode(
+                threshold=threshold,
+                branching_factor=branching_factor,
+                is_leaf=True,
+                n_features=n_features,
+                dtype=d_type,
+            )
+            self.dummy_leaf_.next_leaf_ = self.root_
+            self.root_.prev_leaf_ = self.dummy_leaf_
+
+        for sample in iter(X):
+
+            cluster = _BFSubcluster()
+            cluster.n_samples_ = sample[0]
+            cluster.linear_sum_ = sample[1]
+            cluster.sq_sum = sample[2]
+            cluster.mol_indices = sample[3]
+
+            cluster.centroid_ = calc_centroid(cluster.linear_sum_, cluster.n_samples_)
+
+            split = self.root_.insert_bf_subcluster(cluster)
+
+            if split:
+                new_subcluster1, new_subcluster2 = _split_node(
+                    self.root_, threshold, branching_factor
+                )
+                del self.root_
+                self.root_ = _BFNode(
+                    threshold=threshold,
+                    branching_factor=branching_factor,
+                    is_leaf=False,
+                    n_features=n_features,
+                    dtype=d_type,
+                )
+                self.root_.append_subcluster(new_subcluster1)
+                self.root_.append_subcluster(new_subcluster2)
+
         self.first_call = False
         return self
 
@@ -597,16 +600,47 @@ class BBReal():
             leaf_ptr = leaf_ptr.next_leaf_
         return leaves
     
+    def _get_BFs(self):
+        """Method to return BitFeatures of the leaves subclusters"""
+        if self.first_call:
+            raise ValueError('The model has not been fitted yet.')
+        
+        BFs = []
+        for leaf in self._get_leaves():
+            for subcluster in leaf.subclusters_:
+                BFs.append(subcluster)
+
+        # Sort the BFs based on the size of the clusters (number of molecules in each cluster)
+        BFs = sorted(BFs, key = lambda x: x.n_samples_, reverse=True)
+
+        return BFs
+    
+    def get_BFs(self, as_objects = False):
+        """Method to return BitFeatures of the leaves subclusters as a list of tuples or as a list of objects
+        
+        tuple format: (n_samples_, linear_sum_, sq_sum, mol_indices)
+        object format: list of _BFSubcluster objects"""
+        if self.first_call:
+            raise ValueError('The model has not been fitted yet.')
+        
+        BFs = self._get_BFs()
+
+        if as_objects:
+            return BFs
+        else:
+            return [(subcluster.n_samples_,
+                     subcluster.linear_sum_,
+                     subcluster.sq_sum,
+                     subcluster.mol_indices
+                     ) for subcluster in BFs]
+    
     def get_centroids(self):
         """Method to return a list of Numpy arrays containing the centroids' fingerprints"""
         if self.first_call:
             raise ValueError('The model has not been fitted yet.')
         
-        centroids = []
-        for leaf in self._get_leaves():
-            for subcluster in leaf.subclusters_:
-                centroids.append(subcluster.centroid_)
-
+        centroids = [calc_centroid(subcluster.linear_sum_, subcluster.n_samples_) for subcluster in self._get_BFs()]
+        
         return centroids
     
     def get_cluster_mol_ids(self):
@@ -614,12 +648,32 @@ class BBReal():
         if self.first_call:
             raise ValueError('The model has not been fitted yet.')
         
-        clusters_mol_id = []
-        for leaf in self._get_leaves():
-            for subcluster in leaf.subclusters_:
-                clusters_mol_id.append(subcluster.mol_indices)
+        clusters_mol_id = [subcluster.mol_indices for subcluster in self._get_BFs()]
 
-        # Return sorted list of clusters based on the length of each cluster
-        clusters_mol_id = sorted(clusters_mol_id, key=lambda x: len(x), reverse=True)
         return clusters_mol_id
+    
+    def get_cluster_populations(self) -> list[int]:
+        """Method to return the number of molecules in each cluster"""
+        if self.first_call:
+            raise ValueError('The model has not been fitted yet.')
+        
+        clusters_populations = [subcluster.n_samples_ for subcluster in self._get_BFs()]
+
+        return clusters_populations
+    
+    def get_iSIM_clusters(self) -> list[float]:
+        """Method to return the iSIM values of each cluster"""
+        if self.first_call:
+            raise ValueError('The model has not been fitted yet.')
+        
+        clusters_iSIM = [jt_isim_real(subcluster.linear_sum_, subcluster.sq_sum, subcluster.n_samples_) for subcluster in self._get_BFs()]
+
+        return clusters_iSIM
+    
+    def reset(self):
+        """Method to reset the model to its initial state."""
+        self.root_ = None
+        self.dummy_leaf_ = None
+        self.index_tracker = 0
+        self.first_call = True
 
