@@ -44,7 +44,8 @@ def hierarchical_bitbirch(fingerprints,
         else:
             bb_object.recluster_inplace(iterations=1,
                                         extra_threshold=threshold - bb_object.threshold,
-                                        shuffle=True)
+                                        shuffle=True,
+                                        seed=42)
             
             cluster_ids[k] = bb_object.get_cluster_mol_ids()
             # Print number of clusters at this step

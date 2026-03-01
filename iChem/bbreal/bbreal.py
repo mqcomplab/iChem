@@ -583,6 +583,122 @@ class BBReal():
 
         self.first_call = False
         return self
+    
+    def recluster_inplace(
+        self,
+        iterations: int = 1,
+        extra_threshold: float = 0.0,
+        shuffle: bool = False,
+        seed: int | None = None,
+        verbose: bool = False,
+        stop_early: bool = False,
+    ):
+        """Refine singleton clusters by re-inserting them into the tree.
+        
+        This method extracts all current subclusters from the tree, resets it,
+        optionally increases the threshold, and refits all subclusters. This can
+        help reduce the number of singleton clusters by giving them another chance
+        to merge with existing clusters under potentially more relaxed conditions.
+        
+        Parameters
+        ----------
+        iterations : int, default=1
+            The maximum number of refinement iterations to perform.
+            
+        extra_threshold : float, default=0.0
+            The amount to increase the current threshold in each iteration.
+            Increasing the threshold makes the merge criterion more permissive,
+            allowing more subclusters to merge.
+            
+        shuffle : bool, default=False
+            Whether to shuffle the order of subclusters before reinsertion.
+            Shuffling can help avoid systematic biases in the clustering order.
+            
+        seed : int or None, default=None
+            Random seed for shuffling. Only used if shuffle=True.
+            
+        verbose : bool, default=False
+            Whether to print progress information during reclustering.
+            
+        stop_early : bool, default=False
+            Whether to stop iterations early if no singletons remain or if
+            the number of singletons hasn't changed since the last iteration.
+            
+        Returns
+        -------
+        self : BBReal
+            The fitted estimator with refined clusters.
+            
+        Raises
+        ------
+        ValueError
+            If the model has not been fitted yet.
+            
+        Notes
+        -----
+        - This method extracts BitFeatures directly as tuples (n_samples_, linear_sum_, sq_sum, mol_indices)
+          from all leaf subclusters before resetting and refitting the tree.
+        - Singleton clusters (clusters with only 1 sample) are particularly likely
+          to find better matches during reclustering, especially when threshold is increased.
+        - The order of reinsertion can affect the final clustering, which is why
+          the shuffle parameter is provided.
+        - The method preserves all clustering features (linear_sum_, sq_sum, mol_indices)
+          from the previous clustering without creating unnecessary intermediate objects.
+        """
+        import random
+        
+        if self.first_call:
+            raise ValueError("The model has not been fitted yet.")
+        
+        singletons_before = 0
+        for iteration_num in range(iterations):
+            # Get all BitFeatures as tuples directly (memory efficient)
+            bf_tuples = self.get_BFs(as_objects=False)
+            
+            # Count the number of clusters and singletons from tuples
+            # Tuple format: (n_samples_, linear_sum_, sq_sum, mol_indices)
+            n_clusters = len(bf_tuples)
+            singleton_bfs = sum(1 for bf_tuple in bf_tuples if bf_tuple[0] == 1)
+            
+            # Check stopping criteria
+            if stop_early:
+                if singleton_bfs == 0 or singleton_bfs == singletons_before:
+                    # No more singletons to refine or no progress made
+                    if verbose:
+                        print(f"Stopping early at iteration {iteration_num + 1}")
+                    break
+            singletons_before = singleton_bfs
+            
+            # Print progress
+            if verbose:
+                print(f"Iteration {iteration_num + 1}/{iterations}")
+                print(f"  Current number of clusters: {n_clusters}")
+                print(f"  Current number of singletons: {singleton_bfs}")
+            
+            # Optionally shuffle the subclusters
+            if shuffle:
+                random.seed(seed)
+                random.shuffle(bf_tuples)
+            
+            # Reset the tree
+            self.reset()
+            
+            # Change the threshold
+            self.threshold += extra_threshold
+            
+            # Refit using fit_BFs method
+            self.fit_BFs(bf_tuples)
+        
+        # Print final stats
+        if verbose:
+            bf_tuples = self.get_BFs(as_objects=False)
+            n_clusters = len(bf_tuples)
+            singleton_bfs = sum(1 for bf_tuple in bf_tuples if bf_tuple[0] == 1)
+            print(f"\nFinal Results:")
+            print(f"  Final number of clusters: {n_clusters}")
+            print(f"  Final number of singletons: {singleton_bfs}")
+        
+        return self
 
     def _get_leaves(self):
         """

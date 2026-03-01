@@ -1,18 +1,17 @@
 import numpy as np # type: ignore
-import io
 import base64
 import json
 import tempfile
 import os
-from pathlib import Path
-from iChem.utils import binary_fps
+from iChem.utils import binary_fps, count_fps, real_fps, normalize_fps, minmax_norm
 from iChem.bblean.similarity import optimal_threshold
-from iChem.bblean import BitBirch
 from iChem.bblean.hierarchical import hierarchical_bitbirch
+from iChem.bbreal.hierarchical import hierarchical_bbreal
+from iChem.bbreal import optimal_threshold_real
 from .mol_images import smiles_to_grid_image
 
 
-def cluster_connect_vis(smiles: list[str],
+def cluster_connections(smiles: list[str],
                     fp_type: str = 'ECFP4',
                     n_bits: int = 2048,
                     fingerprints: np.ndarray = None,
@@ -20,6 +19,7 @@ def cluster_connect_vis(smiles: list[str],
                     steps: int = 5,
                     branching_factor: int = 1024,
                     min_size: int = 100,
+                    clustering_fp_type: str = "binary",
                     ):
     """Cluster connection visualization to check how clusters are connected in chemical space
     at different thresholds.
@@ -42,6 +42,8 @@ def cluster_connect_vis(smiles: list[str],
         Branching factor for the BitBirch clustering. Default is 1024.
     min_size : int, optional
         Minimum cluster size to consider. Default is 100.
+    clustering_fp_type : str, optional
+        Type of fingerprint to use for clustering. Either "binary", "real" or "count". Default is "binary".
 
     Returns
     -------
@@ -49,13 +51,32 @@ def cluster_connect_vis(smiles: list[str],
     """
     
     if fingerprints is None:
-        fingerprints, invalid_smiles = binary_fps(smiles=smiles,
-                                  fp_type=fp_type,
-                                  n_bits=n_bits,
+        if clustering_fp_type == "binary":
+            fingerprints, invalid_smiles = binary_fps(smiles=smiles,
+                                      fp_type=fp_type,
+                                      n_bits=n_bits,
                                   packed=True,
                                   return_invalid=True,
                                   )
-        
+        elif clustering_fp_type == "real":
+            fingerprints, invalid_smiles = real_fps(smiles=smiles,
+                                  return_invalid=True,
+                                  )
+            
+            # Normalize the fingerprints
+            fingerprints = minmax_norm(fingerprints)
+        elif clustering_fp_type == "count":
+            fingerprints, invalid_smiles = count_fps(smiles=smiles,
+                                      fp_type=fp_type,
+                                      n_bits=n_bits,
+                                  return_invalid=True,
+                                  )
+            
+            # Normalize the fingerprints
+            fingerprints = normalize_fps(fingerprints)
+        else:
+            raise ValueError(f"Invalid clustering_fp_type: {clustering_fp_type}. Must be 'binary', 'real' or 'count'.")
+
         if invalid_smiles:
             print(f"Warning: The following SMILES strings are invalid and will be ignored: \n {np.array(smiles)[invalid_smiles]}")
 
@@ -66,11 +87,20 @@ def cluster_connect_vis(smiles: list[str],
     
 
     # Perform the initial clustering
-    if initial_threshold is None:
+    if initial_threshold is None and clustering_fp_type == "binary":
         initial_threshold = optimal_threshold(fingerprints)
+    if initial_threshold is None and (clustering_fp_type == "real" or clustering_fp_type == "count"):
+        initial_threshold = optimal_threshold_real(fingerprints)
 
 
-    cluster_ids = hierarchical_bitbirch(fingerprints,
+    if clustering_fp_type == "binary":
+        cluster_ids = hierarchical_bitbirch(fingerprints,
+                                        threshold=initial_threshold,
+                                        steps=steps,
+                                        branching_factor=branching_factor,
+                                        )
+    if clustering_fp_type == "real" or clustering_fp_type == "count":
+        cluster_ids = hierarchical_bbreal(fingerprints,
                                         threshold=initial_threshold,
                                         steps=steps,
                                         branching_factor=branching_factor,

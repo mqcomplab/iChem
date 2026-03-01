@@ -8,6 +8,7 @@ from .smiles import load_smiles
 from .fingerprints import fps_from_smiles
 from .bitbirch import BitBirch, set_merge
 from .fingerprints import pack_fingerprints, unpack_fingerprints
+from .similarity import optimal_threshold
 
 __all__ = [
     # Global namespace for convenience
