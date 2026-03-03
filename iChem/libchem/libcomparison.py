@@ -517,6 +517,7 @@ class LibComparison:
     def venn_diagram_composition(self,
                                 lib_names: list[str] = None,
                                 save_path: str = None,
+                                upset: bool = False,
                                 ) -> None:
         """Generate a Venn diagram showing overlap in cluster compositions.
         
@@ -528,6 +529,8 @@ class LibComparison:
                 order used for clustering. If None, uses all libraries. Defaults to None.
             save_path (str, optional): File path to save the diagram. If None, displays 
                 without saving. Defaults to None.
+            upset (bool, optional): If True, generate an UpSet plot instead of a Venn diagram. 
+                Defaults to False.
                 
         Raises:
             ValueError: If no combined library exists (cluster_libraries() must be called first).
@@ -536,7 +539,7 @@ class LibComparison:
         if self.combined_library is None:
             raise ValueError("No combined library found. Please run cluster_libraries() first.")
         counts, _ = combo_counts(self.combined_library.get_cluster_flags(), library_names=lib_names if lib_names is not None else self.library_names)
-        venn_lib_comp(counts, lib_names=lib_names if lib_names is not None else self.library_names, save_path=save_path)
+        venn_lib_comp(counts, lib_names=lib_names if lib_names is not None else self.library_names, save_path=save_path, upset=upset)
 
     def cluster_composition_counts(self,
                                    top: int = 20

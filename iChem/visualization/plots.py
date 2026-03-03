@@ -191,7 +191,8 @@ def bar_chart_library_comparison(values: list[Counter],
 
 def venn_lib_comp(counts: dict,
                   lib_names: list = None,
-                save_path: str = None):
+                save_path: str = None,
+                upset = False):
     """Generate a Venn diagram showing library overlaps for 2-3 libraries, or UpSet plot for 4+ libraries.
 
     Args:
@@ -214,7 +215,7 @@ def venn_lib_comp(counts: dict,
     # Pass the counts to percentage with only one decimal place
     counts_pct = {key: round((value / total_clusters) * 100, 1) for key, value in counts.items()}
 
-    if n_libs <= 3:
+    if n_libs <= 3 and not upset:
         # Use traditional Venn diagrams for 2-3 libraries
         from matplotlib_venn import venn2, venn3 # type: ignore
         
