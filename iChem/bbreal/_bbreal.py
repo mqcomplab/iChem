@@ -1,32 +1,3 @@
-# BitBirch Real is an open-source clustering module based on n-ary comparisons
-# This script contains auxiliary functions for bbreal
-#
-# BitBirch Real is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, version 3.
-#
-# BitBirch Real is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# Parts of the BitBIRCH Real algorithm were previously released under the LGPL-3.0 license by:
-# mdBIRCH License: GPL-3.0 https://www.gnu.org/licenses/gpl-3.0.en.html
-# authors: Ramon Alain Miranda Quintana <ramirandaq@gmail.com>, <quintana@chem.ufl.edu>
-#          Lexin Chen <le.chen@ufl.edu>
-#          Jherome Brylle Woody Santos <ja.santos@ufl.edu>
-#          Kenneth Lopez Perez <klopezperez@chem.ufl.edu>
-### Part of the tree-management code was derived from https://scikit-learn.org/stable/modules/generated/sklearn.cluster.Birch.html
-### Authors: Manoj Kumar <manojkumarsivaraj334@gmail.com>
-###          Alexandre Gramfort <alexandre.gramfort@telecom-paristech.fr>
-###          Joel Nothman <joel.nothman@gmail.com>
-### License: BSD 3 clause
-# Parts of the BitBIRCH algorithm were previously released under the LGPL-3.0 license by: 
-# Ramon Alain Miranda Quintana <ramirandaq@gmail.com>, <quintana@chem.ufl.edu>
-# Vicky (Vic) Jung <jungvicky@ufl.edu>
-# Kenneth Lopez Perez <klopezperez@chem.ufl.edu>
-# Kate Huddleston <kdavis2@chem.ufl.edu>
-
 import numpy as np # type: ignore
 from scipy import sparse # type: ignore
 from ..iSIM.real import calculate_isim_real
