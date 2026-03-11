@@ -3,6 +3,7 @@
 import os
 import warnings
 
+from .fingerprints import pack_fingerprints, unpack_fingerprints
 from numpy.typing import NDArray # type: ignore
 import numpy as np # type: ignore
 
@@ -54,52 +55,16 @@ if os.getenv("BITBIRCH_NO_EXTENSIONS"):
     )
 else:
     try:
-        from bblean._cpp_similarity import (  # type: ignore
-            jt_isim_from_sum,
-            _jt_sim_arr_vec_packed,
-            jt_isim_unpacked_u8,
-            jt_isim_packed_u8,
-            jt_most_dissimilar_packed,
-            unpack_fingerprints,
-        )
-
-        # Wrap these two since doing
-        def jt_isim_unpacked(arr: NDArray[np.integer]) -> float:
-            # Wrapping like this is slightly faster than letting pybind11 autocast
-            if arr.dtype == np.uint64:
-                return jt_isim_from_sum(
-                    np.sum(arr, axis=0, dtype=np.uint64), len(arr)  # type: ignore
-                )
-            return jt_isim_unpacked_u8(arr)
-
-        # Probably a mypy bug
-        def jt_isim_packed(  # type: ignore
-            arr: NDArray[np.integer], n_features: int | None = None
-        ) -> float:
-            # Wrapping like this is slightly faster than letting pybind11 autocast
-            if arr.dtype == np.uint64:
-                return jt_isim_from_sum(
-                    np.sum(
-                        unpack_fingerprints(arr, n_features),  # type: ignore
-                        axis=0,
-                        dtype=np.uint64,
-                    ),
-                    len(arr),
-                )
-            return jt_isim_packed_u8(arr)
-
-    except ImportError:
         from ._py_similarity import (  # type: ignore
-            jt_isim_from_sum,
-            jt_isim_unpacked,
-            jt_isim_packed,
-            _jt_sim_arr_vec_packed,
-            jt_most_dissimilar_packed,
-        )
-
+                    jt_isim_from_sum,
+                    jt_isim_unpacked,
+                    jt_isim_packed,
+                    _jt_sim_arr_vec_packed,
+                    jt_most_dissimilar_packed,
+                )
+    except ImportError:
         warnings.warn(
-            "C++ optimized similarity calculations not available,"
-            " falling back to python implementation"
+            "Could not import iSIM functions"
         )
 
 
@@ -319,6 +284,8 @@ def estimate_jt_std(
         # Heuristic: use at least 50 samples, or 1 per 10,000 fingerprints,
         # to balance statistical representativeness and computational efficiency
         n_samples = max(num_fps // 10_000, 50)
+    if n_samples >= num_fps:
+        n_samples = num_fps
     sample_idxs = jt_stratified_sampling(fps, n_samples, input_is_packed, n_features)
 
     # Work with only the sampled fingerprints
@@ -364,3 +331,16 @@ def jt_stratified_sampling(
     strata = np.array_split(sorted_indices, n_samples)
     # Get first index of each strata
     return np.array([s[0] for s in strata])
+
+def optimal_threshold(fps: np.ndarray,
+                      packed: bool = True,
+                      factor: float = 3.5,):
+    """Estimate an optimal threshold for clustering based on iSIM and iSIM-sigma."""
+
+    if not packed:
+        fps = pack_fingerprints(fps)
+    
+    isim_sigma = estimate_jt_std(fps)
+    isim = jt_isim_packed(fps)
+
+    return isim + factor * isim_sigma

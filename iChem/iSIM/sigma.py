@@ -1,8 +1,9 @@
 import numpy as np # type: ignore
 import pandas as pd # type: ignore
 from joblib import Parallel, delayed, parallel_backend # type: ignore
-from iChem.iSIM.sampling import stratified_sampling
-from iChem.utils import pairwise_average, rdkit_pairwise_sim
+from .sampling import stratified_sampling
+from ..utils import pairwise_average, rdkit_pairwise_sim
+from .real import calculate_comp_sim_real, pairwise_average_real
 
 def get_stdev_russell_fast(arr):
     """
@@ -151,6 +152,36 @@ def stratified_sigma(fps, n = 50, n_ary = 'JT'):
     else:
         # Calculate the pairwise average of the sampled indexes
         average, std = pairwise_average(fps_strat, n_ary = n_ary, return_std = True)
+
+    return std
+
+def stratified_sigma_real(fps, n = 50, n_ary = 'JT'):
+    """
+    Method to estimate the standard deviation by sampling representative fingerprints using stratified sampling for real or count fingerprints.
+    
+    Parameters
+    ----------
+    fps : np.array
+        Fingerprints should be normalized before being passed to this function.
+    
+    n : int
+        Number of samples to take.
+        
+    n_ary : str
+        Type of similarity to calculate the pairwise average.
+        
+    Returns
+    -------
+    standard deviation: float
+    """
+    # Calculate the complementary similarity for the real fingerprints
+    comp_sim_real = calculate_comp_sim_real(fps, n_ary = n_ary)
+
+    indexes_strat = stratified_sampling(comp_sim=comp_sim_real, n_ary = n_ary, n_sample = n)
+
+    fps_strat = fps[indexes_strat]
+
+    _, std = pairwise_average_real(fps_strat, n_ary = n_ary, return_std = True)
 
     return std
 

@@ -8,9 +8,13 @@ iChem compares binary fingerprints in sets simultaneously instead of pairwise.
 
 ## Installation
 
+iChem requires Python 3.12 or newer.
+
+At the moment, iChem is installed from this repository and not from PyPI.
+
 ### Create a new conda environment (recommended)
 ```bash
-conda create -n iChem python=3.10 -y
+conda create -n iChem python=3.12 -y
 conda activate iChem
 ```
 
@@ -19,9 +23,15 @@ conda activate iChem
 conda install -c conda-forge rdkit
 ```
 
-### Install iChem
+### Clone the repository
 ```bash
-pip install iChem
+git clone https://github.com/klopezperez/iChem.git
+cd iChem
+```
+
+### Install iChem from source
+```bash
+pip install .
 ```
 
 ## Features
@@ -32,15 +42,25 @@ pip install iChem
 - **Visualization**: Built-in plotting tools for cluster composition, heatmaps, and molecular visualizations
 - **Flexible Fingerprints**: Support for multiple fingerprint types (ECFP4, MACCS, RDKit)
 
-## Getting Started
+## Submodules
 
-The `scripts/` directory contains Jupyter notebooks and Python scripts that serve as comprehensive guides for using iChem's various tools:
+- **`iChem.iSIM`**: Core n-ary similarity tools, including instantaneous similarity calculations, complementary similarity, medoid and outlier identification, counters, sampling, and sigma-based analyses.
+- **`iChem.bblean`**: Memory-efficient BitBIRCH-style clustering for binary molecular fingerprints, along with fingerprint packing, SMILES loading, similarity utilities, and a `hierarchical` workflow for multi-level binary clustering. For ultra-large libraries, direct usage from the standalone `bblean` repository is recommended instead of the bundled iChem version.
+- **`iChem.bbreal`**: Clustering tools for real-valued descriptor spaces, including threshold estimation and a `hierarchical` workflow for multi-level clustering of continuous molecular representations.
+- **`iChem.libchem`**: High-level library analysis interfaces built around `LibChem` and `LibComparison` for loading libraries, generating fingerprints, clustering, and comparing multiple collections.
+- **`iChem.visualization`**: Plotting and visualization helpers for cluster populations, heatmaps, cluster connectivity, and molecule image generation.
+- **`iChem.utils`**: General utility functions for SMILES loading, fingerprint generation, normalization, and pairwise similarity calculations using RDKit.
 
-- **`library_compare.ipynb`**: Tutorial for comparing chemical libraries, including similarity metrics and visualization
-- **`fingerprint_smi.py`**: Script for generating fingerprints from SMILES files
-- **`fingerprint_sdf.py`**: Script for generating fingerprints from SDF files
+The [scripts/](scripts/) directory contains notebooks and example scripts showing common iChem workflows.
 
-These examples demonstrate real-world usage patterns and best practices for working with iChem.
+### Notebooks
+
+- `bbreal_example.ipynb`: Demonstrates `iChem.bbreal` usage with a sample dataset and clustering examples.
+- `hierarchical_bitbirch.ipynb`: Visualizes cluster connectivity and cluster-level summaries for inspection and publication-ready figures. Hierarchical visualizations with bblean.
+- `iSIM_start_guide.ipynb`: A quickstart guide for `iChem.iSIM`, showing typical workflows and basic analyses.
+- `library_compare.ipynb`: Example workflow for comparing multiple chemical libraries using iChem's comparison tools.
+
+Other files in `scripts/` are example Python scripts for batch processing, fingerprint generation, and format conversion.
 
 
 ## Citation

@@ -8,17 +8,10 @@ import ctypes
 import dataclasses
 from pathlib import Path
 import sys
-import time
-import os
-import multiprocessing as mp
 
 import typing_extensions as tpx
-import psutil
 import numpy as np
 from numpy.typing import NDArray
-from rich.console import Console
-
-_BYTES_TO_GIB = 1 / 1024**3
 
 
 class Madv(Enum):
@@ -124,75 +117,3 @@ def _mmap_file_and_madvise_sequential(
     # failure is harmless, but could incurr in a slight perf penalty
     _madvise_sequential(arr.ctypes.data - arr.offset, arr.nbytes)
     return arr
-
-
-def system_mem_gib() -> tuple[int, int] | tuple[None, None]:
-    mem = psutil.virtual_memory()
-    return mem.total * _BYTES_TO_GIB, mem.available * _BYTES_TO_GIB
-
-
-def get_peak_memory_gib(out_dir: Path) -> float | None:
-    file = out_dir / "max-rss.txt"
-    if not file.exists():
-        return None
-    with open(file, mode="r", encoding="utf-8") as f:
-        peak_mem_gib = float(f.read().strip())
-    return peak_mem_gib
-
-
-def monitor_rss_process(
-    file: Path | str, interval_s: float, start_time: float, parent_pid: int
-) -> None:
-    file = Path(file)
-    this_pid = os.getpid()
-    ps = psutil.Process(parent_pid)
-
-    def total_rss() -> float:
-        total_rss = ps.memory_info().rss
-        for proc in ps.children(recursive=True):
-            if proc.pid == this_pid:
-                continue
-            try:
-                total_rss += proc.memory_info().rss
-            except psutil.NoSuchProcess:
-                # Prevent race condition since process may have finished before it can
-                # be polled
-                continue
-        return total_rss
-
-    with open(file, mode="w", encoding="utf-8") as f:
-        f.write("rss_gib,time_s\n")
-        f.flush()
-        os.fsync(f.fileno())
-
-    max_rss_gib = 0.0
-    while True:
-        total_rss_gib = total_rss() * _BYTES_TO_GIB
-        with open(file, mode="a", encoding="utf-8") as f:
-            f.write(f"{total_rss_gib},{time.perf_counter() - start_time}\n")
-            f.flush()
-            os.fsync(f.fileno())
-        if total_rss_gib > max_rss_gib:
-            max_rss_gib = total_rss_gib
-            with open(file.parent / "max-rss.txt", mode="w", encoding="utf-8") as f:
-                f.write(f"{max_rss_gib}\n")
-                f.flush()
-                os.fsync(f.fileno())
-        time.sleep(interval_s)
-
-
-def launch_monitor_rss_daemon(
-    out_file: Path, interval_s: float, console: Console | None = None
-) -> None:
-    if console is not None:
-        console.print("** Monitoring total RAM usage **\n")
-    mp.Process(
-        target=monitor_rss_process,
-        kwargs=dict(
-            file=out_file,
-            interval_s=interval_s,
-            start_time=time.perf_counter(),
-            parent_pid=os.getpid(),
-        ),
-        daemon=True,
-    ).start()

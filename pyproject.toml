@@ -10,7 +10,8 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
 authors = [
-    { name = "Kenneth Lopez", email = "klopezperez@ufl.edu" }
+    { name = "Kenneth Lopez Perez", email = "klopezperez@chem.ufl.edu" },
+    { name = "Ramon Alain Miranda Quintana", email = "quintana@chem.ufl.edu" }
 ]
 dependencies = [
     "numpy>=2.0",
@@ -21,7 +22,11 @@ dependencies = [
     "scikit-learn",
     "numexpr>=2.8.0",
     "rich",
-    "psutil"
+    "psutil",
+    "plotly",
+    "nbformat>=4.2.0",
+    "matplotlib_venn",
+    "upsetplot"
 ]
 
 [project.optional-dependencies]
