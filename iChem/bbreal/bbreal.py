@@ -70,7 +70,7 @@ def _iterate_sparse_X(X):
     X_indptr = X.indptr
 
     for i in range(n_samples):
-        row = np.zeros(n_features)
+        row = np.zeros(n_features, dtype=np.float32)
         startptr, endptr = X_indptr[i], X_indptr[i + 1]
         nonzero_indices = X_indices[startptr:endptr]
         row[nonzero_indices] = X_data[startptr:endptr]
@@ -451,7 +451,7 @@ class BBReal():
         branching_factor = self.branching_factor
 
         n_features = X.shape[1]
-        d_type = X.dtype
+        d_type = np.float32  # Force float32 for memory efficiency
 
         # If partial_fit is called for the first time or fit is called, we
         # start a new tree.
@@ -484,7 +484,7 @@ class BBReal():
 
         for sample in iter_func(X):
             #set_bits = np.sum(sample)
-            subcluster = _BFSubcluster(linear_sum=sample.copy(), mol_indices = [self.index_tracker])
+            subcluster = _BFSubcluster(linear_sum=sample.astype(np.float32).copy(), mol_indices = [self.index_tracker])
             split = self.root_.insert_bf_subcluster(subcluster)
 
             if split:
@@ -531,7 +531,7 @@ class BBReal():
         branching_factor = self.branching_factor
 
         n_features = len(X[0][1])
-        d_type = X[0][1].dtype
+        d_type = np.float32  # Force float32 for memory efficiency
 
 
         # Initialize the tree
@@ -558,8 +558,8 @@ class BBReal():
 
             cluster = _BFSubcluster()
             cluster.n_samples_ = sample[0]
-            cluster.linear_sum_ = sample[1]
-            cluster.sq_sum = sample[2]
+            cluster.linear_sum_ = sample[1].astype(np.float32)
+            cluster.sq_sum = sample[2].astype(np.float32)
             cluster.mol_indices = sample[3]
 
             cluster.centroid_ = calc_centroid(cluster.linear_sum_, cluster.n_samples_)
