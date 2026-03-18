@@ -4,41 +4,22 @@ from typing import Tuple, List, Dict, Optional
 import pickle
 import argparse
 import numpy as np
-from iChem.utils import binary_fps, load_smiles
 from iChem.bblean import BitBirch, optimal_threshold
 import time
 
 def process_and_cluster_chunk(
     chunk_id: int,
     start_index: int,
-    smiles_chunk: List[str],
-    fp_type: str,
-    n_bits: int,
+    fp_chunk_file: Path,
     threshold: Optional[float],
-    save_fps: bool,
-    output_parent_dir: str,
 ) -> Tuple[int, float, Dict[str, List[np.ndarray]], Dict[str, List[List[int]]]]:
     """
-    Generate and cluster fingerprints for one chunk of SMILES.
+    Load and cluster one fingerprint chunk stored in a .npy file.
 
     Returns:
         (chunk_id, threshold_used, bfs_dict, mol_indices_dict)
     """
-    fps, invalid_smiles = binary_fps(
-        smiles_chunk,
-        fp_type=fp_type,
-        n_bits=n_bits,
-        return_invalid=True,
-        packed=True,
-    )
-
-    if invalid_smiles:
-        raise ValueError(f"Chunk {chunk_id} contains invalid SMILES: {invalid_smiles}")
-
-    # Optional: persist packed fingerprint chunk immediately after generation.
-    if save_fps:
-        chunk_path = Path(output_parent_dir) / f"fps_chunk_{chunk_id:06d}.npy"
-        np.save(chunk_path, fps)
+    fps = np.load(fp_chunk_file)
     
     if threshold is None:
         threshold = optimal_threshold(fps)
@@ -58,31 +39,23 @@ def process_and_cluster_chunk(
 
 
 def parallelize_clustering(
-    smi_file: Path,
-    fp_type: str = "AP",
-    n_bits: int = 2048,
-    chunk_size: int = 1_000_000,
+    fp_chunks_path: Path,
     n_workers: Optional[int] = None,
     threshold: Optional[float] = None,
     output_dir: Optional[Path] = None,
-    save_fps: bool = False,
 ) -> List[List[int]]:
     """
-    Parallelize chunk fingerprint generation and clustering for a large SMILES file,
+    Parallelize clustering for chunked fingerprint .npy files,
     then merge chunk-level clusters into final cluster ids.
     
     Args:
-        smi_file: Path to input .smi file
-        fp_type: Fingerprint type (e.g., 'ecfp4', 'maccs')
-        n_bits: Number of bits for fingerprints
-        chunk_size: SMILES per worker (default 1M)
+        fp_chunks_path: Path to a directory containing chunked .npy fingerprint
+            files, or a single .npy file.
         n_workers: Number of parallel workers
         threshold: Clustering threshold
         output_dir: Output path. If it has a file suffix, results are saved there;
             otherwise it is treated as a directory and saved as
             "final_cluster_ids.pkl" inside it.
-        save_fps: If True, each worker saves its packed fingerprint chunk right
-            after generation in the same directory as the final output file.
 
     Returns:
         List of clusters, each containing molecule indices.
@@ -90,7 +63,19 @@ def parallelize_clustering(
     if n_workers is None:
         n_workers = mp.cpu_count()
     
-    basename = smi_file.stem
+    if fp_chunks_path.is_dir():
+        chunk_files = sorted(fp_chunks_path.glob("*.npy"))
+    elif fp_chunks_path.is_file() and fp_chunks_path.suffix == ".npy":
+        chunk_files = [fp_chunks_path]
+    else:
+        raise ValueError(
+            "fp_chunks_path must be a directory with .npy files or a single .npy file"
+        )
+
+    if not chunk_files:
+        raise ValueError(f"No .npy fingerprint chunk files found in {fp_chunks_path}")
+
+    basename = fp_chunks_path.stem if fp_chunks_path.is_file() else fp_chunks_path.name
 
     if output_dir is None:
         output_path = Path(f"./clustering_{basename}/final_cluster_ids.pkl")
@@ -103,39 +88,25 @@ def parallelize_clustering(
         output_path.mkdir(parents=True, exist_ok=True)
         output_path = output_path / "final_cluster_ids.pkl"
 
-    output_parent_dir = str(output_path.parent)
-    
-    # Read SMILES file in chunks
-    print(f"Reading SMILES from {smi_file}...")
-    smiles_list = load_smiles(smi_file)
-    
-    # Split into chunks
-    chunks = [
-        smiles_list[i:i + chunk_size]
-        for i in range(0, len(smiles_list), chunk_size)
-    ]
-    
-    print(f"Processing {len(chunks)} chunks with {n_workers} workers...")
+    print(f"Found {len(chunk_files)} fingerprint chunks at {fp_chunks_path}")
+    print(f"Processing chunks with {n_workers} workers...")
     
     # Build per-chunk tasks with correct global start indices.
     tasks = []
     offset = 0
-    for chunk_id, chunk in enumerate(chunks):
+    for chunk_id, chunk_file in enumerate(chunk_files):
+        chunk_rows = int(np.load(chunk_file, mmap_mode="r").shape[0])
         tasks.append(
             (
                 chunk_id,
                 offset,
-                chunk,
-                fp_type,
-                n_bits,
+                chunk_file,
                 threshold,
-                save_fps,
-                output_parent_dir,
             )
         )
-        offset += len(chunk)
+        offset += chunk_rows
 
-    # Generate + cluster each chunk in a single worker call.
+    # Cluster each chunk in parallel.
     with mp.Pool(n_workers) as pool:
         bf_clusters = pool.starmap(process_and_cluster_chunk, tasks)
 
@@ -165,26 +136,22 @@ def parallelize_clustering(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Parallel chunked clustering for SMILES files")
+    parser = argparse.ArgumentParser(description="Parallel chunked clustering for fingerprint .npy files")
     parser.add_argument(
-        "--smi-file",
+        "--fps_dir",
         required=True,
         type=Path,
-        help="Path to input .smi file",
+        help="Path to a directory with chunked .npy fingerprints or a single .npy file",
     )
     args = parser.parse_args()
 
-    smi_file = args.smi_file
+    fp_chunks_path = args.fps_dir
     start = time.time()
 
 
     # Please change the parameters below as needed for your specific use case. The current settings are just examples.
     parallelize_clustering(
-        smi_file=smi_file,
-        fp_type="ECFP4",
-        n_bits=2048,
-        chunk_size=500_000,
-        save_fps=True
+        fp_chunks_path=fp_chunks_path,
     )
 
     end = time.time()
