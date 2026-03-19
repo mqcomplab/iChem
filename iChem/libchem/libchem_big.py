@@ -8,61 +8,6 @@ from iChem.bblean.similarity import jt_isim_medoid
 from ..utils import load_smiles as _load_smiles
 from ..utils import binary_fps
 
-def process_and_cluster_chunk(
-    chunk_id: int,
-    start_index: int,
-    fp_chunk_file: Path,
-    threshold: Optional[float],
-) -> Tuple[int, float, Dict[str, List[np.ndarray]], Dict[str, List[List[int]]]]:
-    """
-    Load and cluster one fingerprint chunk stored in a .npy file.
-
-    Returns:
-        (chunk_id, threshold_used, bfs_dict, mol_indices_dict)
-    """
-    fps = np.load(fp_chunk_file)
-    
-    if threshold is None:
-        threshold = optimal_threshold(fps)
-
-    bb_object = BitBirch(
-        merge_criterion='diameter',
-        threshold=threshold,
-    )
-
-    reinsert_ids = np.arange(start_index, start_index + fps.shape[0])
-    bb_object.fit(fps, reinsert_indices=reinsert_ids)
-
-    bb_object.delete_internal_nodes()
-    fps_bfs, mols_bfs = bb_object._bf_to_np()
-
-    return chunk_id, threshold, fps_bfs, mols_bfs
-
-
-def process_and_cluster_chunk_array(
-    chunk_id: int,
-    start_index: int,
-    fps: np.ndarray,
-    threshold: Optional[float],
-) -> Tuple[int, float, Dict[str, List[np.ndarray]], Dict[str, List[List[int]]]]:
-    """Cluster one in-memory fingerprint chunk and return BF summaries."""
-    if threshold is None:
-        threshold = optimal_threshold(fps)
-
-    bb_object = BitBirch(
-        merge_criterion='diameter',
-        threshold=threshold,
-        branching_factor=1024,
-    )
-
-    reinsert_ids = np.arange(start_index, start_index + fps.shape[0])
-    bb_object.fit(fps, reinsert_indices=reinsert_ids)
-
-    bb_object.delete_internal_nodes()
-    fps_bfs, mols_bfs = bb_object._bf_to_np()
-
-    return chunk_id, threshold, fps_bfs, mols_bfs
-
 class LibChemBig:
     def __init__(self,
                  chunk_size: int = 1_000_000,
@@ -84,9 +29,13 @@ class LibChemBig:
         self.threshold = threshold
         self.library_name = library_name
 
-    def _load_smiles_gen_fps_indexed(self, task: Tuple[int, str]) -> Tuple[int, List[str], np.ndarray]:
+    def _load_smiles_gen_fps_cluster(self, task: Tuple[int, int, str]) -> Tuple[float, List[str], np.ndarray]:
         """Process one file with indexing and return file_index, smiles, and fps for stable merge."""
-        file_index, file_path = task
+        initial_id, final_id, file_path = task
+        print(f"Processing file: {file_path} with IDs from {initial_id} to {final_id}")
+
+        reinsert_ids = np.arange(initial_id, final_id)
+
         # Load SMILES and gen fingerprints
         smiles = _load_smiles(file_path)
         fps, _invalid = binary_fps(smiles,
@@ -96,67 +45,88 @@ class LibChemBig:
                          return_invalid=True)
         
         if len(_invalid) > 0:
-            print(f"Warning: {len(_invalid)} invalid SMILES were skipped and deleted.")
-            smiles = np.delete(smiles, _invalid, axis=0).tolist()
-        
-        return file_index, list(smiles), fps
+            print(f"Warning: {len(_invalid)} invalid SMILES were skipped.")
+            # Delete invalid entries from reinsert_ids to maintain correct indexing, note that invalid are the positions in the array not the actual id
+            reinsert_ids = np.delete(reinsert_ids, _invalid)
+
+        if self.threshold is None:
+            threshold = optimal_threshold(fps)
+
+        bb_object = BitBirch(
+        merge_criterion='diameter',
+        threshold=threshold,
+        branching_factor=1024,
+        )
+
+        bb_object.fit(fps, reinsert_indices=reinsert_ids)
+
+        bb_object.delete_internal_nodes()
+        fps_bfs, mols_bfs = bb_object._bf_to_np()
+
+        del bb_object
+        del fps
+
+        return threshold, fps_bfs, mols_bfs
     
 
-    def gen_fps(self, smi_path: str) -> None:
-        """Generate fingerprints for all SMILES in a directory of SMI files"""
+    def _load_fps_cluster(self, task: Tuple[int, int, str]) -> Tuple[float, List[str], np.ndarray]:
+        """Process one file with indexing and return file_index, smiles, and fps for stable merge."""
+        initial_id, final_id, file_path = task
+        print(f"Processing file: {file_path} with IDs from {initial_id} to {final_id}")
+
+        reinsert_ids = np.arange(initial_id, final_id)
+
+        fps = np.load(file_path, mmap_mode='r')
         
+        if self.threshold is None:
+            threshold = optimal_threshold(fps)
+
+        bb_object = BitBirch(
+        merge_criterion='diameter',
+        threshold=threshold,
+        branching_factor=1024,
+        )
+
+        bb_object.fit(fps, reinsert_indices=reinsert_ids)
+
+        bb_object.delete_internal_nodes()
+        fps_bfs, mols_bfs = bb_object._bf_to_np()
+
+        del bb_object
+        del fps
+
+        return threshold, fps_bfs, mols_bfs
+    
+
+    def gen_fps_and_cluster(self, smi_path: str) -> None:
+        """Generate fingerprints for all SMILES in a directory of SMI files and cluster them"""
+
         # Get workers to work separately on each SMI file, then combine results
         smi_files = [os.path.join(smi_path, f) for f in os.listdir(smi_path) if f.endswith('.smi')]
         smi_files.sort()  # Ensure consistent order across runs
-        indexed_tasks = [(i, f) for i, f in enumerate(smi_files)]
+    
+        # Get the initial and final id for each file based on the chunk size, to be used for reinsert indices in clustering
+        indexed_tasks = []
+        current_id = 0
+        for smi_file in smi_files:
+            num_lines = self.chunk_size
+            final_id = current_id + num_lines
+            indexed_tasks.append((current_id, final_id, smi_file))
+            current_id = final_id
+
+        # For the last task, modify the final_id to be the total number of lines in the file, to avoid out of bounds error
+        last_file = smi_files[-1]
+        with open(last_file, 'r') as f:
+            total_lines = sum(1 for _ in f)
+        indexed_tasks[-1] = (indexed_tasks[-1][0], indexed_tasks[-1][0] + total_lines, last_file)
 
         # Load the smile file and generate the fingerprints
         # Store the smiles in the corresponding order to be able to retrieve them later for medoid saving
         with Pool(self.n_workers) as pool:
-            worker_results = pool.map(self._load_smiles_gen_fps_indexed, indexed_tasks)
+            worker_results = pool.map(self._load_smiles_gen_fps_cluster, indexed_tasks)
 
-        # Keep a deterministic global order regardless of worker completion order.
-        worker_results.sort(key=lambda x: x[0])
-
-        full_smiles: List[str] = []
-        # Precompute n_cols and dtype from known parameters (packed format: n_bits bits = n_bits//8 bytes)
-        n_cols = self.n_bits // 8
-        dtype = np.uint8
-        total_rows = sum(int(fps_chunk.shape[0]) for _, _, fps_chunk in worker_results)
-        full_fps = np.empty((total_rows, n_cols), dtype=dtype) if worker_results else np.empty((0, 0), dtype=dtype)
-
-        offset = 0
-        for _, smiles_chunk, fps_chunk in worker_results:
-            if len(smiles_chunk) != int(fps_chunk.shape[0]):
-                raise ValueError("Mismatch between valid SMILES count and fingerprint rows in chunk.")
-            full_smiles.extend(smiles_chunk)
-            n_rows = int(fps_chunk.shape[0])
-            full_fps[offset:offset + n_rows] = fps_chunk
-
-            offset += n_rows
-
-        self.full_smiles = full_smiles
-        self.full_fps = full_fps
-
-    def cluster(self) -> List[List[int]]:
-        """Cluster fingerprints in chunks using global-offset reinsert indices."""
-        if self.full_fps is None:
-            raise ValueError("Fingerprints not generated. Run gen_fps first.")
-
-        n_rows = int(self.full_fps.shape[0])
-        if n_rows == 0:
-            self.clusters = []
-            return self.clusters
-
-        tasks = []
-        for chunk_id, start in enumerate(range(0, n_rows, self.chunk_size)):
-            fps_chunk = self.full_fps[start:start + self.chunk_size]
-            tasks.append((chunk_id, start, fps_chunk, self.threshold))
-
-        with Pool(self.n_workers) as pool:
-            bfs_results = pool.starmap(process_and_cluster_chunk_array, tasks)
-
-        final_threshold = self.threshold if self.threshold is not None else max([t[1] for t in bfs_results])
+        # Combine results from all workers
+        final_threshold = self.threshold if self.threshold is not None else max([t[0] for t in worker_results])
 
         bbmodel = BitBirch(
             threshold=final_threshold,
@@ -164,68 +134,67 @@ class LibChemBig:
             merge_criterion='diameter',
         )
 
-        for _, _, bfs_chunk, mols_chunk in bfs_results:
+        for _, bfs_chunk, mols_chunk in worker_results:
             for key in bfs_chunk.keys():
                 bbmodel._fit_np(X=bfs_chunk[key], reinsert_index_seqs=mols_chunk[key])
 
-        self.threshold = final_threshold
-        self.clusters = bbmodel.get_cluster_mol_ids()
-        return self.clusters
+        centroids_fps = bbmodel.get_centroids()
+        del bbmodel
+        # Save centroids_fps
+        np.save(f'{self.library_name}_centroids_fps.npy', centroids_fps)
 
+        # Print statistics about the library and clustering
+        print(f"Number of molecules clustered: {indexed_tasks[-1][0] + total_lines}")
+        print(f"Number of clusters formed: {len(centroids_fps)}")
+        print(f"Clustering threshold used: {final_threshold:.4f}")
 
-    def save_cluster_medoids(
-            self,
-    ) -> None:
-        """Calculate and save the medoid for each cluster.
-        
-        Computes the medoid (most representative molecule) for each cluster based
-        on fingerprint similarity. Stores both fingerprints and SMILES strings of
-        medoids in the class instance.
-        
-        Raises:
-            ValueError: If SMILES data has not been loaded or clustering has not been performed.
-            
-        Note:
-            Medoids are stored in cluster_medoids_fps and cluster_medoids_smiles attributes.
-        """
-        if self.smiles is None:
-            raise ValueError("SMILES data not loaded.")
-        if not hasattr(self, 'clusters'):
-            raise ValueError("Clustering not performed. Please run cluster() method first. Or set_threshold() and run cluster() method.")
+    def load_fps_and_cluster(self, fps_dir: str) -> None:
+        """Load precomputed fingerprints and cluster them"""
+        # Load the precomputed fingerprints
+        fps_files = [os.path.join(fps_dir, f) for f in os.listdir(fps_dir) if f.endswith('.npy')]
+        fps_files.sort()  # Ensure consistent order across runs
 
-        fingerprints_medoids = []
-        smiles_medoids = []
-        for cluster in self.clusters:
-            fps_cluster = self.full_fps[cluster]
-            medoid_index, medoid_fingerprint = jt_isim_medoid(fps_cluster)
-            fingerprints_medoids.append(medoid_fingerprint)
-            smiles_medoids.append(self.smiles[cluster[medoid_index]])
-        
-        self.cluster_medoids_fps = np.array(fingerprints_medoids)
-        self.cluster_medoids_smiles = smiles_medoids
+        # Get the initial and final id for each file based on the chunk size, to be used for reinsert indices in clustering
+        indexed_tasks = []
+        current_id = 0
+        for fps_file in fps_files:
+            num_lines = self.chunk_size
+            final_id = current_id + num_lines
+            indexed_tasks.append((current_id, final_id, fps_file))
+            current_id = final_id
 
-        # Save to disk to a .npy and .txt file respectively
-        np.save(f'{self.library_name}_medoids_fps.npy', self.cluster_medoids_fps)
-        with open(f'{self.library_name}_medoids_smiles.smi', 'w') as f:
-            for smi in self.cluster_medoids_smiles:
-                f.write(f"{smi}\n")
+        # For the last task, modify the final_id to be the total number of lines in the file, to avoid out of bounds error
+        last_file = fps_files[-1]
+        fps_last = np.load(last_file, mmap_mode='r')
+        total_lines = fps_last.shape[0]
+        indexed_tasks[-1] = (indexed_tasks[-1][0], indexed_tasks[-1][0] + total_lines, last_file)
 
+        # Load the precomputed fingerprints
+        with Pool(self.n_workers) as pool:
+            worker_results = pool.map(self._load_fps_cluster, indexed_tasks)
 
-    def load_medoids_fps_and_smiles(self, fps_file: str, smiles_file: str) -> None:
-        """Load medoid fingerprints and SMILES from disk."""
-        self.cluster_medoids_fps = np.load(fps_file, mmap_mode='r')
-        with open(smiles_file, 'r') as f:
-            self.cluster_medoids_smiles = _load_smiles(smiles_file)
+        # Combine results from all workers
+        final_threshold = self.threshold if self.threshold is not None else max([t[0] for t in worker_results])
 
-    def dump_statistics(self) -> Dict[str, any]:
-        """Return a dictionary of statistics about the library and clustering."""
-        stats = {
-            'library_name': self.library_name,
-            'num_molecules': len(self.full_smiles),
-            'num_clusters': len(self.clusters) if hasattr(self, 'clusters') else None,
-            'threshold': self.threshold,
-        }
-        return stats
+        bbmodel = BitBirch(
+            threshold=final_threshold,
+            branching_factor=1024,
+            merge_criterion='diameter',
+        )
+
+        for _, bfs_chunk, mols_chunk in worker_results:
+            for key in bfs_chunk.keys():
+                bbmodel._fit_np(X=bfs_chunk[key], reinsert_index_seqs=mols_chunk[key])
+
+        # Save centroids_fps
+        centroids_fps = bbmodel.get_centroids()
+        del bbmodel
+        np.save(f'{self.library_name}_centroids_fps.npy', centroids_fps)
+
+        # Print statistics about the library and clustering
+        print(f"Number of molecules clustered: {indexed_tasks[-1][0] + total_lines}")
+        print(f"Number of clusters formed: {len(centroids_fps)}")
+        print(f"Clustering threshold used: {final_threshold:.4f}")
 
 
         
