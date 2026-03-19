@@ -4,7 +4,7 @@ import tracemalloc
 tracemalloc.start()
 
 start = time.time()
-Lib = LibChemBig()
+Lib = LibChemBig(chunk_size=1_000_000, fp_type='ECFP4', n_bits=2048, library_name="TestLib")
 
 # Use one line or the other, depending on if you need to genreate fingerprints
 
