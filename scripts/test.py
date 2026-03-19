@@ -6,7 +6,7 @@ tracemalloc.start()
 start = time.time()
 Lib = LibChemBig(chunk_size=1_000_000, fp_type='ECFP4', n_bits=2048, library_name="TestLib")
 
-# Use one line or the other, depending on if you need to genreate fingerprints
+# Use one line or the other, depending on if you need to genreate fingerprints. # Either should be in chunks same size
 
 #Lib.load_fps_and_cluster("clustering_BRD4_train") # Directory containing the .npy files with the fingerprints
 Lib.gen_fps_and_cluster("/home/kenneth/Documents/DELs/test_smi") # Directory containing the .smi
