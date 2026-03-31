@@ -4,6 +4,7 @@ from .iSIM import calculate_isim
 from .iSIM.real import pair_jt, pair_rr, pair_sm
 from rdkit import Chem, DataStructs # type: ignore
 from rdkit.Chem import Descriptors, rdFingerprintGenerator, MACCSkeys, SaltRemover # type: ignore
+from multiprocessing import Pool, cpu_count # type: ignore
 
 """
 This module contains utility functions for the iChem package regarding fingerprint generation, and 
@@ -41,6 +42,47 @@ def _get_generator(fp_type: str, n_bits: int):
         raise ValueError(f'Invalid fingerprint type: {fp_type}')
 
 def binary_fps(smiles: list,
+               fp_type: str = 'RDKIT',
+               n_bits: int = 2048,
+               return_invalid: bool = False,
+               standarize: bool = False,
+               packed: bool = False):
+    """This function generates binary fingerprints for the dataset. Parallelized across CPU cores.
+    Parameters:
+        smiles: list of SMILES strings
+        fp_type: type of fingerprint to generate ['RDKIT', 'ECFP4', 'ECFP6', 'AP', 'TT', or 'MACCS']
+        n_bits: number of bits for the fingerprint (ignored for MACCS)
+        return_invalid: whether to return invalid SMILES indices
+        standarize: whether to standardize the molecules before generating fingerprints
+        packed: whether to return packed fingerprints (not supported for MACCS)
+    Returns:
+        fingerprints: numpy array of fingerprints
+        and list of invalid SMILES indices if return_invalid is True
+    """
+
+    # Divide the smiles into chunks and generate fingerprints for each chunk in parallel
+    smiles_tasks = np.array_split(smiles, cpu_count())
+
+    with Pool(cpu_count()) as pool:
+        results = pool.starmap(
+            _binary_fps,
+            [(chunk, fp_type, n_bits, return_invalid, standarize, packed) for chunk in smiles_tasks]
+        )
+
+    # Concatenate the results from all chunks
+    if return_invalid:
+        fps = np.concatenate([res[0] for res in results])
+        invalid_indices = [idx for res in results for idx in res[1]]
+        if invalid_indices:
+            print(f"Warning: {len(invalid_indices)} invalid SMILES found at indices: {invalid_indices}")
+            print("There might be isues in the order of the valid fingerprints due to the invalid SMILES. Consider checking the invalid SMILES and their indices.")
+        return fps, invalid_indices
+    else:
+        fps = np.concatenate(results)
+        return fps
+
+
+def _binary_fps(smiles: list,
                fp_type: str = 'RDKIT',
                n_bits: int = 2048,
                return_invalid: bool = False,
@@ -108,6 +150,41 @@ def binary_fps(smiles: list,
         return fingerprints
     
 def count_fps(smiles: list,
+              fp_type: str = 'RDKIT',
+              n_bits: int = 2048,
+              return_invalid: bool = True) -> np.ndarray:
+    """
+    This function generates count-based fingerprints for the dataset. Parallelized across CPU cores.
+    Parameters:
+    smiles: list of SMILES strings
+    fp_type: type of fingerprint to generate ['RDKIT', 'ECFP4', 'ECFP6']
+    n_bits: number of bits for the fingerprint
+    return_invalid: whether to return invalid SMILES indices
+
+    Returns:
+    fingerprints: numpy array of count fingerprints
+    and list of invalid SMILES indices if return_invalid is True
+        """
+    
+    smiles_tasks = np.array_split(smiles, cpu_count())
+    with Pool(cpu_count()) as pool:
+        results = pool.starmap(
+            _count_fps,
+            [(chunk, fp_type, n_bits, return_invalid) for chunk in smiles_tasks]
+        )
+
+    if return_invalid:
+        fps = np.concatenate([res[0] for res in results])
+        invalid_indices = [idx for res in results for idx in res[1]]
+        if invalid_indices:
+            print(f"Warning: {len(invalid_indices)} invalid SMILES found at indices: {invalid_indices}")
+            print("There might be isues in the order of the valid fingerprints due to the invalid SMILES. Consider checking the invalid SMILES and their indices.")
+        return fps, invalid_indices
+    else:
+        fps = np.concatenate(results)
+        return fps
+    
+def _count_fps(smiles: list,
               fp_type: str = 'RDKIT',
               n_bits: int = 2048,
               return_invalid: bool = True) -> np.ndarray:
