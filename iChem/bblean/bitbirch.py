@@ -393,7 +393,7 @@ class _BFSubcluster:
         self,
         *,
         linear_sum: NDArray[np.integer] | None = None,
-        mol_indices: tp.Sequence[int] = (),
+        mol_indices: tp.Sequence[int | str] = (),
         n_features: int = 2048,
         buffer: NDArray[np.integer] | None = None,
     ):
@@ -524,7 +524,7 @@ class _BFSubcluster:
 
 class _CentroidsMolIds(tp.TypedDict):
     centroids: list[NDArray[np.uint8]]
-    mol_ids: list[list[int]]
+    mol_ids: list[list[int | str]]
 
 
 class BitBirch:
@@ -694,7 +694,7 @@ class BitBirch:
         self,
         X: _Input | Path | str,
         /,
-        reinsert_indices: tp.Iterable[int] | None = None,
+        reinsert_indices: tp.Iterable[int | str] | None = None,
         input_is_packed: bool = True,
         n_features: int | None = None,
         max_fps: int | None = None,
@@ -744,7 +744,7 @@ class BitBirch:
         # with the array rows, depending on the kind of X passed
         arr_iterable = _get_array_iterable(X, input_is_packed, n_features)
         arr_iterable = cast(tp.Iterable[NDArray[np.uint8]], arr_iterable)
-        iterable: tp.Iterable[tuple[int, NDArray[np.uint8]]]
+        iterable: tp.Iterable[tuple[int | str, NDArray[np.uint8]]]
         if reinsert_indices is None:
             iterable = enumerate(arr_iterable, self.num_fitted_fps)
         else:
@@ -778,7 +778,8 @@ class BitBirch:
     def _fit_np(
         self,
         X: _Input | Path | str,
-        reinsert_index_seqs: tp.Iterable[tp.Sequence[int]] | None = None,
+        reinsert_index_seqs: tp.Iterable[tp.Sequence[int | str]] | None = None,
+        db_name: str | None = None,
     ) -> tpx.Self:
         r"""Build a BF Tree starting from buffers
 
@@ -821,10 +822,12 @@ class BitBirch:
         merge_accept_fn = self._merge_accept_fn
         threshold = self.threshold
         branching_factor = self.branching_factor
-        idx_provider: tp.Iterable[tp.Sequence[int]]
+        idx_provider: tp.Iterable[tp.Sequence[int | str]]
         arr_idx = 0
         if reinsert_index_seqs is None:
             idx_provider = ([idx] for idx in range(self.num_fitted_fps))
+        elif db_name is not None:
+            idx_provider = ([db_name + str(k) for k in seq] for seq in reinsert_index_seqs)
         else:
             idx_provider = reinsert_index_seqs
         for idxs, buf in zip(idx_provider, arr_iterable):
@@ -851,7 +854,7 @@ class BitBirch:
     def fit_reinsert(
         self,
         X: _Input | Path | str,
-        reinsert_indices: tp.Iterable[int],
+        reinsert_indices: tp.Iterable[int | str],
         input_is_packed: bool = True,
         n_features: int | None = None,
         max_fps: int | None = None,
@@ -897,7 +900,7 @@ class BitBirch:
         attr = "packed_centroid" if packed else "unpacked_centroid"
         return [getattr(s, attr) for s in self._get_leaf_bfs(sort=sort)]
 
-    def get_cluster_mol_ids(self, sort: bool = True) -> list[list[int]]:
+    def get_cluster_mol_ids(self, sort: bool = True) -> list[list[int | str]]:
         r"""Get the indices of the molecules in each cluster"""
         return [s.mol_indices for s in self._get_leaf_bfs(sort=sort)]
     
@@ -932,14 +935,29 @@ class BitBirch:
         else:
             assignments = np.empty(self.num_fitted_fps, dtype=np.uint64)
 
-        iterator: tp.Iterable[list[int]]
+        iterator: tp.Iterable[tp.Sequence[int | str]]
         if sort:
             iterator = self.get_cluster_mol_ids(sort=True)
         else:
             iterator = (
                 s.mol_indices for leaf in self._get_leaves() for s in leaf._subclusters
             )
+
         for i, mol_ids in enumerate(iterator, 1):
+            if mol_ids and isinstance(mol_ids[0], str):
+                # Support ids serialized as "prefix123" by extracting trailing digits.
+                norm_mol_ids: list[int] = []
+                for mol_id in mol_ids:
+                    j = len(mol_id)
+                    while j > 0 and mol_id[j - 1].isdigit():
+                        j -= 1
+                    if j == len(mol_id):
+                        raise ValueError(
+                            "Found non-integer molecule id without trailing digits: "
+                            f"{mol_id}"
+                        )
+                    norm_mol_ids.append(int(mol_id[j:]))
+                mol_ids = norm_mol_ids
             assignments[mol_ids] = i
 
         # Check that there are no unassigned molecules
@@ -1125,7 +1143,9 @@ class BitBirch:
         initial_mol: int = 0,
         input_is_packed: bool = True,
         n_largest: int = 1,
-    ) -> tuple[dict[str, list[NDArray[np.integer]]], dict[str, list[list[int]]]]:
+    ) -> tuple[
+        dict[str, list[NDArray[np.integer]]], dict[str, list[list[int | str]]]
+    ]:
         """Prepare numpy bufs ('np') for BitFeatures, splitting the biggest n clusters
 
         The largest clusters are split into singletons. In order to perform this split,
@@ -1156,7 +1176,11 @@ class BitBirch:
             unpack_or_copy = lambda x: x.copy()
 
         for big_bf in largest:
-            full_arr_idxs = [(idx - initial_mol) for idx in big_bf.mol_indices]
+            if any(not isinstance(idx, (int, np.integer)) for idx in big_bf.mol_indices):
+                raise ValueError(
+                    "Refinement of big clusters is only possible for numerical ids, please add db_name string preffix after refining not before"
+                )
+            full_arr_idxs = [(int(idx) - initial_mol) for idx in big_bf.mol_indices]
             _X: _Input
             if isinstance(X, (Path, str)):
                 # Only load the specific required mol idxs
@@ -1189,20 +1213,31 @@ class BitBirch:
 
     def _bf_to_np(
         self,
-    ) -> tuple[dict[str, list[NDArray[np.integer]]], dict[str, list[list[int]]]]:
+    ) -> tuple[
+        dict[str, list[NDArray[np.integer]]], dict[str, list[list[int | str]]]
+    ]:
         """Prepare numpy buffers ('np') for BitFeatures of all clusters"""
         return self._prepare_bf_to_buffer_dicts(self._get_leaf_bfs())
 
     @staticmethod
     def _prepare_bf_to_buffer_dicts(
         bfs: list["_BFSubcluster"],
-    ) -> tuple[dict[str, list[NDArray[np.integer]]], dict[str, list[list[int]]]]:
+        name: str | None = None,
+    ) -> tuple[
+        dict[str, list[NDArray[np.integer]]], dict[str, list[list[int | str]]]
+    ]:
         # Helper function used when returning lists of subclusters
         dtypes_to_fp = defaultdict(list)
         dtypes_to_mols = defaultdict(list)
-        for bf in bfs:
-            dtypes_to_fp[bf.dtype_name].append(bf._buffer)
-            dtypes_to_mols[bf.dtype_name].append(bf.mol_indices)
+        if name is None:
+            for bf in bfs:
+                dtypes_to_fp[bf.dtype_name].append(bf._buffer)
+                dtypes_to_mols[bf.dtype_name].append(bf.mol_indices)
+        if name is not None:
+            for bf in bfs:
+                dtypes_to_fp[bf.dtype_name].append(bf._buffer)
+                dtypes_to_mols[bf.dtype_name].append([name + str(i) for i in bf.mol_indices])
+        
         return dtypes_to_fp, dtypes_to_mols
 
     def __repr__(self) -> str:
