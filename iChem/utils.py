@@ -529,6 +529,28 @@ def load_smiles(file_path: str, standarize: bool = False) -> list:
         
     return smiles
 
+def load_multiple_smiles(dir_path: str, standarize: bool = False) -> list:
+    """
+    This function loads SMILES strings from multiple files in a directory.
+    
+    Parameters:
+    dir_path: path to the directory containing files with SMILES strings
+    
+    Returns:
+    smiles: list of SMILES strings
+    """
+    import glob
+
+    smiles_files = glob.glob(dir_path + '/*.smi')
+    smiles_files = sorted(smiles_files)
+
+    all_smiles = []
+    for file in smiles_files:
+        smiles = load_smiles(file)
+        all_smiles.extend(smiles)
+
+    return all_smiles
+
 def smiles_standarization(mol) -> Chem.Mol:
     """
     This function standardizes a molecule by removing salts and keeping the largest fragment.

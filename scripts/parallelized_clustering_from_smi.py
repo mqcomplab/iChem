@@ -9,7 +9,7 @@ import glob
 
 
 from iChem.bblean import BitBirch, optimal_threshold
-from iChem.utils import binary_fps, load_smiles
+from iChem.utils import _binary_fps, load_smiles
 
 def process_and_cluster_chunk(
     smi_file: Path,
@@ -25,11 +25,11 @@ def process_and_cluster_chunk(
     smiles = load_smiles(smi_file)
 
     #Generate fps
-    fps, invalids = binary_fps(smiles=smiles,
+    fps, invalids = _binary_fps(smiles=smiles,
                      fp_type="ECFP4",
                      n_bits=1024,
                      return_invalid=True,
-                     packed=True)
+                     packed=True)                   # Change accordingly to your needs for the type of fps and parameters you want to use
     
     # Get the range of fps indices
     idx_range = range(0, len(smiles), 1)
@@ -155,37 +155,61 @@ def parallelize_clustering(
             mols_to_fit = mol_ids[key]
             bbmodel._fit_np(X=bf_to_fit, reinsert_index_seqs=mols_to_fit)
 
+    # Recluster the merged model to clean up singletons and refine clusters
+    bbmodel.recluster_inplace(iterations=3, extra_threshold=0.025)
+
     # Save and return final cluster ids for all molecules.
     final_bfs, final_mol_ids = bbmodel._bf_to_np()
+    n_clusters = 0
+    for key in final_bfs.keys():
+        n_clusters += len(final_bfs[key])
+    n_singletons = 0
+    for key in final_mol_ids.keys():
+        for mol_ids_cluster in final_mol_ids[key]:
+            if len(mol_ids_cluster) == 1:
+                n_singletons += 1
 
     # Delete the intermediate chunk-level BFS results and the directory inclusively
     for chunk_file in chunk_result_files:
         Path(chunk_file).unlink()
     output_dir_chunks.rmdir()
 
-    final_output_path = output_dir_clustering / "final_cluster_ids.pkl"
+    final_output_path = output_dir_clustering / "final_cluster_bfs.pkl"
     with final_output_path.open("wb") as f:
         pickle.dump((final_bfs, final_mol_ids), f)
+    print(f"--------------------------------------------------------------------------------")
+    print("***********************************************************************************")
     print(f"Final cluster ids saved to {final_output_path}")
-    print(f"Final number of clusters: {len(final_bfs)}")
+    print(f"Final number of clusters: {n_clusters}")
+    print(f"Number of singletons in final clusters: {n_singletons}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Parallel version to generate fps (from .smi) and cluster them")
     parser.add_argument(
+        "-smi",
         "--smiles_dir",
         required=True,
         type=Path,
         help="Path to a directory with chunked .smi files or a single .smi file",
     )
+    parser.add_argument(
+        "-t",
+        "--threshold",
+        default=None,
+        type=float,
+        help="Threshold for clustering"
+    )
     args = parser.parse_args()
 
     smiles_dir = args.smiles_dir
+    threshold = args.threshold
     start = time.time()
 
 
     # Please change the parameters below as needed for your specific use case. The current settings are just examples.
     parallelize_clustering(
         smiles_dir_path=smiles_dir,
+        threshold=threshold
     )
 
     end = time.time()
