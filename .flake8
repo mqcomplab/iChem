@@ -1,0 +1,11 @@
+[flake8]
+ignore = W503,E203,E731
+max-line-length = 88
+exclude =
+    .git,
+    __pycache__,
+    build,
+    .eggs,
+    bblean.egg-info,
+    bblean/_legacy/*.py,
+    docs,

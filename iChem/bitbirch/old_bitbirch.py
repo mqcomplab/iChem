@@ -76,7 +76,7 @@ from .similarity import (
 )
 
 if os.getenv("BITBIRCH_NO_EXTENSIONS"):
-    from bblean.fingerprints import unpack_fingerprints as _unpack_fingerprints
+    from bitbirch.fingerprints import unpack_fingerprints as _unpack_fingerprints
 else:
     try:
         from .fingerprints import unpack_fingerprints as _unpack_fingerprints
@@ -408,7 +408,9 @@ class _BFSubcluster:
         if buffer is not None:
             if linear_sum is not None:
                 raise ValueError("'linear_sum' and 'buffer' are mutually exclusive")
-            if len(mol_indices) != buffer[-1]:
+            if type(mol_indices) == str:
+                    mol_indices = [mol_indices]
+            if len(mol_indices) != buffer[-1]:    
                 raise ValueError(
                     "Expected len(mol_indices) == buffer[-1],"
                     f" but found {len(mol_indices)} != {buffer[-1]}"

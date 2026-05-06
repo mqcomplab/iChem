@@ -1,5 +1,5 @@
-from .bitbirch import BitBirch
-from .similarity import optimal_threshold
+from bblean.bitbirch import BitBirch
+from optimal_threshold import optimal_threshold
 import numpy as np # type: ignore
 
 def hierarchical_bitbirch(fingerprints,

@@ -11,6 +11,8 @@ iChem compares binary fingerprints in sets simultaneously instead of pairwise.
 iChem requires Python 3.12 or newer.
 
 At the moment, iChem is installed from this repository and not from PyPI.
+It depends on the upstream `bblean` package, which supports Python 3.11+; there is no
+Python-version conflict with iChem's 3.12+ requirement.
 
 ### Create a new conda environment (recommended)
 ```bash
@@ -31,8 +33,11 @@ cd iChem
 
 ### Install iChem from source
 ```bash
-pip install .
+BITBIRCH_BUILD_CPP=1 pip install -e .
 ```
+
+This installs iChem together with `bblean` from the upstream repository and builds the
+C++ extension during installation.
 
 ## Features
 
@@ -45,7 +50,7 @@ pip install .
 ## Submodules
 
 - **`iChem.iSIM`**: Core n-ary similarity tools, including instantaneous similarity calculations, complementary similarity, medoid and outlier identification, counters, sampling, and sigma-based analyses.
-- **`iChem.bblean`**: Memory-efficient BitBIRCH-style clustering for binary molecular fingerprints, along with fingerprint packing, SMILES loading, similarity utilities, and a `hierarchical` workflow for multi-level binary clustering. For ultra-large libraries, direct usage from the standalone `bblean` repository is recommended instead of the bundled iChem version.
+- **`iChem.bblean`**: Memory-efficient BitBIRCH-style clustering for binary molecular fingerprints, along with fingerprint packing, SMILES loading, similarity utilities, and a `hierarchical` workflow for multi-level binary clustering. This code now relies on the upstream `bblean` package, so `BITBIRCH_BUILD_CPP=1 pip install -e .` will build the C++ extension during an editable install.
 - **`iChem.bbreal`**: Clustering tools for real-valued descriptor spaces, including threshold estimation and a `hierarchical` workflow for multi-level clustering of continuous molecular representations.
 - **`iChem.libchem`**: High-level library analysis interfaces built around `LibChem` and `LibComparison` for loading libraries, generating fingerprints, clustering, and comparing multiple collections.
 - **`iChem.visualization`**: Plotting and visualization helpers for cluster populations, heatmaps, cluster connectivity, and molecule image generation.

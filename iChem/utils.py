@@ -529,6 +529,30 @@ def load_smiles(file_path: str, standarize: bool = False) -> list:
         
     return smiles
 
+def load_smiles_and_ids(file_path: str) -> tuple:
+    """
+    This function loads SMILES and IDs from a file.
+    
+    Parameters:
+    file_path: path to the file containing SMILES strings
+    
+    Returns:
+    smiles: list of SMILES strings
+    ids: list of corresponding IDs (indices) for the SMILES strings
+    """
+    # Read SMILES and IDs from the file, each line has the format: "SMILES\tID"
+    smiles = []
+    ids = []
+
+    with open(file_path, 'r') as f:
+        for line in f:
+            if line.strip():
+                smi, idx = line.split('\t', 1)
+                smiles.append(smi.split(' ')[0].strip())
+                ids.append(idx.strip())
+        
+    return smiles, ids
+
 def load_multiple_smiles(dir_path: str, standarize: bool = False) -> list:
     """
     This function loads SMILES strings from multiple files in a directory.
