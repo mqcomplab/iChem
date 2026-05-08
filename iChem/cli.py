@@ -9,6 +9,10 @@ from typing import Sequence
 
 from .bitbirch.cluster import cluster
 from .bitbirch.multiround_reclustering import run_multiround_reclustering
+from .bitbirch._hpc_initial_submit import prepare_initial_round_jobs
+from .bitbirch._hpc_midsection_submit import prepare_midsection_round_jobs
+from .bitbirch._hpc_final_submit import prepare_final_round_job
+from .bitbirch import _config
 
 
 def _print_banner() -> None:
@@ -46,10 +50,10 @@ def _build_parser() -> argparse.ArgumentParser:
     cluster_parser = subparsers.add_parser("cluster", help="Cluster a file or directory")
     cluster_parser.add_argument("input", type=Path, help="Path to a .smi, .smi.gz, .npy file, or a directory")
     cluster_parser.add_argument("--threshold", type=float, default=None)
-    cluster_parser.add_argument("--fp-type", default="ECFP4")
-    cluster_parser.add_argument("--n-bits", type=int, default=2048)
-    cluster_parser.add_argument("--branching-factor", type=int, default=1024)
-    cluster_parser.add_argument("--merge-criterion", default="diameter")
+    cluster_parser.add_argument("--fp-type", default=_config.FINGERPRINT_TYPE)
+    cluster_parser.add_argument("--n-bits", type=int, default=_config.N_BITS)
+    cluster_parser.add_argument("--branching-factor", type=int, default=_config.BRANCHING_FACTOR)
+    cluster_parser.add_argument("--merge-criterion", default=_config.MERGE_CRITERION)
     cluster_parser.add_argument("--out", type=Path, default=None, help="Optional pickle output path")
     cluster_parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False)
 
@@ -60,22 +64,77 @@ def _build_parser() -> argparse.ArgumentParser:
     multiround_parser.add_argument("--input-is-packed", action=argparse.BooleanOptionalAction, default=True)
     multiround_parser.add_argument("--num-initial-processes", type=int, default=10)
     multiround_parser.add_argument("--num-midsection-processes", type=int, default=None)
-    multiround_parser.add_argument("--merge-criterion", default="diameter")
-    multiround_parser.add_argument("--branching-factor", type=int, default=1024)
-    multiround_parser.add_argument("--threshold", type=float, default=0.65)
-    multiround_parser.add_argument("--midsection-threshold-change", type=float, default=0.0)
-    multiround_parser.add_argument("--num-midsection-rounds", type=int, default=1)
-    multiround_parser.add_argument("--bin-size", type=int, default=10)
+    multiround_parser.add_argument("--merge-criterion", default=_config.MERGE_CRITERION)
+    multiround_parser.add_argument("--branching-factor", type=int, default=_config.BRANCHING_FACTOR)
+    multiround_parser.add_argument("--threshold", type=float, default=_config.THRESHOLD)
+    multiround_parser.add_argument("--midsection-threshold-change", type=float, default=_config.MIDSECTION_THRESHOLD_CHANGE)
+    multiround_parser.add_argument("--num-midsection-rounds", type=int, default=_config.NUM_MIDSECTION_ROUNDS)
+    multiround_parser.add_argument("--bin-size", type=int, default=_config.BIN_SIZE)
     multiround_parser.add_argument("--max-tasks-per-process", type=int, default=1)
     multiround_parser.add_argument("--save-tree", action=argparse.BooleanOptionalAction, default=False)
     multiround_parser.add_argument("--save-centroids", action=argparse.BooleanOptionalAction, default=True)
-    multiround_parser.add_argument("--reclustering-iterations-initial", type=int, default=3)
-    multiround_parser.add_argument("--reclustering-iterations-midsection", type=int, default=0)
-    multiround_parser.add_argument("--reclustering-iterations-final", type=int, default=0)
-    multiround_parser.add_argument("--reclustering-extra-threshold", type=float, default=0.025)
+    multiround_parser.add_argument("--reclustering-iterations-initial", type=int, default=_config.RECLUSTERING_ITERATIONS_INITIAL)
+    multiround_parser.add_argument("--reclustering-iterations-midsection", type=int, default=_config.RECLUSTERING_ITERATIONS_MIDSECTION)
+    multiround_parser.add_argument("--reclustering-iterations-final", type=int, default=_config.RECLUSTERING_ITERATIONS_FINAL)
+    multiround_parser.add_argument("--reclustering-extra-threshold", type=float, default=_config.RECLUSTERING_EXTRA_THRESHOLD)
     multiround_parser.add_argument("--max-fps", type=int, default=None)
     multiround_parser.add_argument("--cleanup", action=argparse.BooleanOptionalAction, default=True)
     multiround_parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False)
+
+    initial_round_parser = subparsers.add_parser(
+        "initial-round", help="Run initial round HPC clustering with automatic job submission"
+    )
+    initial_round_parser.add_argument("input", nargs="+", type=Path, help="Input .smi or .smi.gz files")
+    initial_round_parser.add_argument("--out-dir", type=Path, required=True, help="Output directory for job scripts and logs")
+    initial_round_parser.add_argument("--files-per-job", type=int, default=_config.FILES_PER_JOB, help="Number of files per job")
+    initial_round_parser.add_argument("--threshold", type=float, default=_config.THRESHOLD, help="BitBirch threshold")
+    initial_round_parser.add_argument("--branching-factor", type=int, default=_config.BRANCHING_FACTOR, help="BitBirch branching factor")
+    initial_round_parser.add_argument("--merge-criterion", default=_config.MERGE_CRITERION, help="Merge criterion")
+    initial_round_parser.add_argument("--fp-type", default=_config.FINGERPRINT_TYPE, help="Fingerprint type")
+    initial_round_parser.add_argument("--n-bits", type=int, default=_config.N_BITS, help="Number of fingerprint bits")
+    initial_round_parser.add_argument("--reclustering-iterations", type=int, default=_config.RECLUSTERING_ITERATIONS_INITIAL, help="Reclustering iterations")
+    initial_round_parser.add_argument("--reclustering-extra-threshold", type=float, default=_config.RECLUSTERING_EXTRA_THRESHOLD, help="Extra threshold for reclustering")
+    initial_round_parser.add_argument("--slurm-mem", default=_config.SLURM_MEM_INITIAL, help="SLURM memory allocation")
+    initial_round_parser.add_argument("--slurm-cpus", type=int, default=_config.SLURM_CPUS_INITIAL, help="SLURM CPU count")
+    initial_round_parser.add_argument("--slurm-time", default=_config.SLURM_TIME, help="SLURM time limit")
+    initial_round_parser.add_argument("--slurm-partition", default=_config.SLURM_PARTITION, help="SLURM partition (optional)")
+    initial_round_parser.add_argument("--result-base-dir", type=Path, default=None, help="Base directory for results (optional)")
+    initial_round_parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False)
+
+    midsection_round_parser = subparsers.add_parser(
+        "midsection-round", help="Run midsection round HPC clustering"
+    )
+    midsection_round_parser.add_argument("--output-dir", type=Path, required=True, help="Output directory containing previous round results")
+    midsection_round_parser.add_argument("--round-idx", type=int, required=True, help="Current round index")
+    midsection_round_parser.add_argument("--bin-size", type=int, default=_config.BIN_SIZE, help="Number of buffer/index pairs per batch job")
+    midsection_round_parser.add_argument("--threshold", type=float, default=None, help="BitBirch threshold (default: same as config)")
+    midsection_round_parser.add_argument("--branching-factor", type=int, default=None, help="BitBirch branching factor (default: same as config)")
+    midsection_round_parser.add_argument("--merge-criterion", default=_config.MERGE_CRITERION, help="Merge criterion")
+    midsection_round_parser.add_argument("--reclustering-iterations", type=int, default=_config.RECLUSTERING_ITERATIONS_MIDSECTION, help="Reclustering iterations")
+    midsection_round_parser.add_argument("--reclustering-extra-threshold", type=float, default=_config.RECLUSTERING_EXTRA_THRESHOLD, help="Extra threshold for reclustering")
+    midsection_round_parser.add_argument("--slurm-mem", default=_config.SLURM_MEM_MIDSECTION, help="SLURM memory allocation")
+    midsection_round_parser.add_argument("--slurm-cpus", type=int, default=_config.SLURM_CPUS_MIDSECTION, help="SLURM CPU count")
+    midsection_round_parser.add_argument("--slurm-time", default=_config.SLURM_TIME, help="SLURM time limit")
+    midsection_round_parser.add_argument("--slurm-partition", default=_config.SLURM_PARTITION, help="SLURM partition (optional)")
+    midsection_round_parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False)
+
+    final_round_parser = subparsers.add_parser(
+        "final-round", help="Run final round HPC clustering"
+    )
+    final_round_parser.add_argument("--output-dir", type=Path, required=True, help="Output directory containing previous round results")
+    final_round_parser.add_argument("--prev-round-idx", type=int, required=True, help="Previous round index to read from")
+    final_round_parser.add_argument("--threshold", type=float, default=None, help="BitBirch threshold (default: same as config)")
+    final_round_parser.add_argument("--branching-factor", type=int, default=None, help="BitBirch branching factor (default: same as config)")
+    final_round_parser.add_argument("--merge-criterion", default=_config.MERGE_CRITERION, help="Merge criterion")
+    final_round_parser.add_argument("--reclustering-iterations", type=int, default=_config.RECLUSTERING_ITERATIONS_FINAL, help="Reclustering iterations")
+    final_round_parser.add_argument("--reclustering-extra-threshold", type=float, default=_config.RECLUSTERING_EXTRA_THRESHOLD, help="Extra threshold for reclustering")
+    final_round_parser.add_argument("--save-tree", action=argparse.BooleanOptionalAction, default=False, help="Save the BitBirch tree")
+    final_round_parser.add_argument("--save-centroids", action=argparse.BooleanOptionalAction, default=True, help="Save centroids and cluster assignments")
+    final_round_parser.add_argument("--slurm-mem", default=_config.SLURM_MEM_FINAL, help="SLURM memory allocation")
+    final_round_parser.add_argument("--slurm-cpus", type=int, default=_config.SLURM_CPUS_FINAL, help="SLURM CPU count")
+    final_round_parser.add_argument("--slurm-time", default=_config.SLURM_TIME, help="SLURM time limit")
+    final_round_parser.add_argument("--slurm-partition", default=_config.SLURM_PARTITION, help="SLURM partition (optional)")
+    final_round_parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False)
 
     return parser
 
@@ -136,16 +195,99 @@ def _run_multiround(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_initial_round(args: argparse.Namespace) -> int:
+    input_files = [Path(f) for f in args.input]
+    if not input_files:
+        raise ValueError("No input files were found")
+
+    script_path = prepare_initial_round_jobs(
+        input_files=input_files,
+        output_dir=args.out_dir,
+        files_per_job=args.files_per_job,
+        threshold=args.threshold,
+        branching_factor=args.branching_factor,
+        merge_criterion=args.merge_criterion,
+        fp_type=args.fp_type,
+        n_bits=args.n_bits,
+        reclustering_iterations=args.reclustering_iterations,
+        extra_threshold=args.reclustering_extra_threshold,
+        slurm_mem=args.slurm_mem,
+        slurm_cpus=args.slurm_cpus,
+        slurm_time=args.slurm_time,
+        slurm_partition=args.slurm_partition,
+        result_base_dir=args.result_base_dir,
+        verbose=args.verbose,
+    )
+
+    print(f"\n✓ Generated submission script: {script_path}")
+    print(f"Run the following to submit all initial round jobs:")
+    print(f"\n  ./{script_path.name}\n")
+    return 0
+
+
+def _run_midsection_round(args: argparse.Namespace) -> int:
+    script_path = prepare_midsection_round_jobs(
+        output_dir=args.output_dir,
+        round_idx=args.round_idx,
+        bin_size=args.bin_size,
+        threshold=args.threshold,
+        branching_factor=args.branching_factor,
+        merge_criterion=args.merge_criterion,
+        reclustering_iterations=args.reclustering_iterations,
+        reclustering_extra_threshold=args.reclustering_extra_threshold,
+        slurm_mem=args.slurm_mem,
+        slurm_cpus=args.slurm_cpus,
+        slurm_time=args.slurm_time,
+        slurm_partition=args.slurm_partition,
+        verbose=args.verbose,
+    )
+
+    print(f"\n✓ Generated submission script: {script_path}")
+    print(f"Run the following to submit all midsection round jobs:")
+    print(f"\n  ./{script_path.name}\n")
+    return 0
+
+
+def _run_final_round(args: argparse.Namespace) -> int:
+    script_path = prepare_final_round_job(
+        output_dir=args.output_dir,
+        prev_round_idx=args.prev_round_idx,
+        threshold=args.threshold,
+        branching_factor=args.branching_factor,
+        merge_criterion=args.merge_criterion,
+        reclustering_iterations=args.reclustering_iterations,
+        reclustering_extra_threshold=args.reclustering_extra_threshold,
+        save_tree=args.save_tree,
+        save_centroids=args.save_centroids,
+        slurm_mem=args.slurm_mem,
+        slurm_cpus=args.slurm_cpus,
+        slurm_time=args.slurm_time,
+        slurm_partition=args.slurm_partition,
+        verbose=args.verbose,
+    )
+
+    print(f"\n✓ Generated submission script: {script_path}")
+    print(f"Run the following to submit the final round job:")
+    print(f"\n  ./{script_path.name}\n")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
-    
+
     _print_banner()
-    
+
     if args.command == "cluster":
         return _run_cluster(args)
     if args.command == "multiround":
         return _run_multiround(args)
+    if args.command == "initial-round":
+        return _run_initial_round(args)
+    if args.command == "midsection-round":
+        return _run_midsection_round(args)
+    if args.command == "final-round":
+        return _run_final_round(args)
     parser.error("Unknown command")
     return 2
 
