@@ -5,7 +5,6 @@ import threading
 from pathlib import Path
 import gzip as gz
 import pickle
-import uuid
 
 import numpy as np
 from bblean import BitBirch
@@ -81,22 +80,11 @@ def _save_bufs_and_mol_idxs(
             pickle.dump(mols_bfs[dtype], f)
 
 
-def _get_or_create_result_dir(base_dir: Path | None = None) -> Path:
-    """Get or create results directory. Uses base_dir directly if provided."""
-    if base_dir is None:
-        base_dir = Path.cwd() / "bb_multiround_results" / str(uuid.uuid4())[:8]
-    else:
-        base_dir = Path(base_dir)
-
-    base_dir.mkdir(parents=True, exist_ok=True)
-    return base_dir
-
-
 def main(args: argparse.Namespace) -> None:
     """Load SMILES files, generate fingerprints, perform initial clustering.
 
     Uses global molecule indices to preserve molecule identity across batches.
-    Saves results to bb_multiround_results/{random_id}/
+    Saves results to the specified output directory.
     """
     start_time = time.time()
     mem_tracker = MemoryTracker()
@@ -107,8 +95,8 @@ def main(args: argparse.Namespace) -> None:
         start_idx = args.start_idx
         end_idx = args.end_idx
         label = args.label
+        output_dir = Path(args.output_dir).resolve() if args.output_dir else Path.cwd().resolve()
 
-        output_dir = _get_or_create_result_dir(args.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         print(f"[{label}] Processing {len(smi_files)} SMILES files (global indices {start_idx}-{end_idx})")

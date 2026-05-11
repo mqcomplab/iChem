@@ -82,7 +82,7 @@ def _generate_initial_round_script(
                 f"--smi-files {files_str} "
                 f"--start-idx {start_idx} --end-idx {end_idx} "
                 f"--label {label} "
-                f"{result_dir_arg} "
+                f"--output-dir {output_dir} "
                 f"--threshold {params['threshold']} "
                 f"--branching-factor {params['branching_factor']} "
                 f"--merge-criterion {params['merge_criterion']} "
