@@ -62,55 +62,75 @@ def _generate_midsection_round_script(
     round_idx: int,
     params: dict,
     slurm_params: dict,
-) -> Path:
-    """Generate shell script for midsection round job submission."""
+    max_jobs_per_script: int = _config.MAX_JOBS_PER_SCRIPT,
+) -> list[Path]:
+    """Generate shell script(s) for midsection round job submission.
+
+    If total batches > max_jobs_per_script, creates multiple scripts.
+    Returns list of script paths.
+    """
     output_dir = output_dir.resolve()
-    script_path = output_dir / f"submit_midsection_round_{round_idx}_jobs.sh"
 
-    with open(script_path, "w") as f:
-        f.write("#!/bin/bash\n\n")
+    # Split batches into chunks if needed
+    script_paths = []
+    num_scripts = (len(batches) + max_jobs_per_script - 1) // max_jobs_per_script
 
-        for batch_label, batch_path_pairs in batches:
-            job_name = f"midsection_{round_idx}_{batch_label}"
-            out_log = output_dir / f"logs/midsection_{round_idx}_{batch_label}_%j.log"
-            job_script = output_dir / f".job_midsection_{round_idx}_{batch_label}.sh"
+    for script_idx in range(num_scripts):
+        start_batch = script_idx * max_jobs_per_script
+        end_batch = min((script_idx + 1) * max_jobs_per_script, len(batches))
+        batch_chunk = batches[start_batch:end_batch]
 
-            pairs_str = ",".join([f"{bp[0]}:{bp[1]}" for bp in batch_path_pairs])
+        if num_scripts > 1:
+            script_path = output_dir / f"submit_midsection_round_{round_idx}_jobs_{script_idx + 1}.sh"
+        else:
+            script_path = output_dir / f"submit_midsection_round_{round_idx}_jobs.sh"
 
-            cmd = (
-                f"python -m iChem.bitbirch._hpc_midsection "
-                f"--output-dir {output_dir} "
-                f"--round-idx {round_idx} "
-                f"--batch-label {batch_label} "
-                f"--file-pairs {pairs_str} "
-                f"--threshold {params['threshold']} "
-                f"--branching-factor {params['branching_factor']} "
-                f"--merge-criterion {params['merge_criterion']} "
-                f"--reclustering-iterations {params['reclustering_iterations']} "
-                f"--extra-threshold {params['extra_threshold']}"
-            )
+        with open(script_path, "w") as f:
+            f.write("#!/bin/bash\n\n")
 
-            f.write(f"cat > {job_script} <<'JOBEOF'\n")
-            f.write("#!/bin/bash\n")
-            f.write(f"#SBATCH --job-name={job_name}\n")
-            f.write(f"#SBATCH --output={out_log}\n")
-            f.write(f"#SBATCH --mem={slurm_params['mem']}\n")
-            f.write(f"#SBATCH --cpus-per-task={slurm_params['cpus']}\n")
-            f.write(f"#SBATCH --time={slurm_params['time']}\n")
-            if slurm_params.get('partition'):
-                f.write(f"#SBATCH --partition={slurm_params['partition']}\n")
-            f.write("\n")
-            f.write("# Load conda module\n")
-            f.write("module load conda\n\n")
-            f.write("# Activate iChem environment\n")
-            f.write("conda activate iChem\n\n")
-            f.write(f"{cmd}\n")
-            f.write("JOBEOF\n")
-            f.write(f"sbatch {job_script}\n")
-            f.write(f"rm {job_script}\n\n")
+            for batch_label, batch_path_pairs in batch_chunk:
+                job_name = f"midsection_{round_idx}_{batch_label}"
+                out_log = output_dir / f"logs/midsection_{round_idx}_{batch_label}_%j.log"
+                job_script = output_dir / f".job_midsection_{round_idx}_{batch_label}.sh"
 
-    script_path.chmod(0o755)
-    return script_path
+                pairs_str = ",".join([f"{bp[0]}:{bp[1]}" for bp in batch_path_pairs])
+
+                cmd = (
+                    f"python -m iChem.bitbirch._hpc_midsection "
+                    f"--output-dir {output_dir} "
+                    f"--round-idx {round_idx} "
+                    f"--batch-label {batch_label} "
+                    f"--file-pairs {pairs_str} "
+                    f"--threshold {params['threshold']} "
+                    f"--branching-factor {params['branching_factor']} "
+                    f"--merge-criterion {params['merge_criterion']} "
+                    f"--reclustering-iterations {params['reclustering_iterations']} "
+                    f"--extra-threshold {params['extra_threshold']}"
+                )
+
+                f.write(f"cat > {job_script} <<'JOBEOF'\n")
+                f.write("#!/bin/bash\n")
+                f.write(f"#SBATCH --job-name={job_name}\n")
+                f.write(f"#SBATCH --output={out_log}\n")
+                f.write(f"#SBATCH --mem={slurm_params['mem']}\n")
+                f.write(f"#SBATCH --cpus-per-task={slurm_params['cpus']}\n")
+                f.write(f"#SBATCH --time={slurm_params['time']}\n")
+                if slurm_params.get('partition'):
+                    f.write(f"#SBATCH --partition={slurm_params['partition']}\n")
+                f.write("\n")
+                f.write("# Load conda module\n")
+                f.write("module load conda\n\n")
+                f.write("# Activate iChem environment\n")
+                f.write("conda activate iChem\n\n")
+                f.write(f"{cmd}\n")
+                f.write("JOBEOF\n")
+                f.write(f"sbatch {job_script}\n")
+                f.write(f"rm {job_script}\n\n")
+
+        script_path.chmod(0o755)
+        script_paths.append(script_path)
+
+    return script_paths
 
 
 def prepare_midsection_round_jobs(
@@ -127,8 +147,9 @@ def prepare_midsection_round_jobs(
     slurm_cpus: int = _config.SLURM_CPUS_MIDSECTION,
     slurm_time: str = _config.SLURM_TIME,
     slurm_partition: str = _config.SLURM_PARTITION,
+    max_jobs_per_script: int = _config.MAX_JOBS_PER_SCRIPT,
     verbose: bool = False,
-) -> Path:
+) -> list[Path]:
     r"""Prepare and generate midsection round job submission script.
 
     Parameters
@@ -206,20 +227,27 @@ def prepare_midsection_round_jobs(
         "partition": slurm_partition,
     }
 
-    script_path = _generate_midsection_round_script(
+    script_paths = _generate_midsection_round_script(
         batches,
         output_dir,
         round_idx,
         params,
         slurm_params,
+        max_jobs_per_script,
     )
 
     if verbose:
-        rel_path = os.path.relpath(script_path, os.getcwd())
-        print(f"\n✓ Generated submission script: {script_path}")
-        print(f"  Run with: bash {rel_path}")
+        if len(script_paths) == 1:
+            rel_path = os.path.relpath(script_paths[0], os.getcwd())
+            print(f"\n✓ Generated submission script: {script_paths[0]}")
+            print(f"  Run with: bash {rel_path}")
+        else:
+            print(f"\n✓ Generated {len(script_paths)} submission scripts (max {max_jobs_per_script} jobs per script):")
+            for i, path in enumerate(script_paths, 1):
+                rel_path = os.path.relpath(path, os.getcwd())
+                print(f"  {i}. bash {rel_path}")
 
-    return script_path
+    return script_paths[0] if len(script_paths) == 1 else script_paths
 
 
 if __name__ == "__main__":

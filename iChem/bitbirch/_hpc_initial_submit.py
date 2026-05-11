@@ -61,59 +61,79 @@ def _generate_initial_round_script(
     params: dict,
     slurm_params: dict,
     result_base_dir: Path | None = None,
-) -> Path:
-    """Generate shell script for initial round job submission."""
+    max_jobs_per_script: int = _config.MAX_JOBS_PER_SCRIPT,
+) -> list[Path]:
+    """Generate shell script(s) for initial round job submission.
+
+    If total jobs > max_jobs_per_script, creates multiple scripts.
+    Returns list of script paths.
+    """
     output_dir = output_dir.resolve()
-    script_path = output_dir / "submit_initial_jobs.sh"
 
-    result_dir_arg = f" --output-dir {result_base_dir.resolve()}" if result_base_dir else ""
+    # Split batches into chunks if needed
+    script_paths = []
+    num_scripts = (len(batches) + max_jobs_per_script - 1) // max_jobs_per_script
 
-    with open(script_path, "w") as f:
-        f.write("#!/bin/bash\n\n")
+    for script_idx in range(num_scripts):
+        start_batch = script_idx * max_jobs_per_script
+        end_batch = min((script_idx + 1) * max_jobs_per_script, len(batches))
+        batch_chunk = batches[start_batch:end_batch]
 
-        for label, file_batch, start_idx, end_idx in batches:
-            job_name = f"initial_{label}"
-            out_log = output_dir / f"logs/initial_{label}_%j.log"
-            job_script = output_dir / f".job_initial_{label}.sh"
+        if num_scripts > 1:
+            script_path = output_dir / f"submit_initial_jobs_{script_idx + 1}.sh"
+        else:
+            script_path = output_dir / "submit_initial_jobs.sh"
 
-            files_str = " ".join(str(f) for f in file_batch)
+        result_dir_arg = f" --output-dir {result_base_dir.resolve()}" if result_base_dir else ""
 
-            cmd = (
-                f"python -m iChem.bitbirch._hpc_initial "
-                f"--smi-files {files_str} "
-                f"--start-idx {start_idx} --end-idx {end_idx} "
-                f"--label {label} "
-                f"--output-dir {output_dir} "
-                f"--threshold {params['threshold']} "
-                f"--branching-factor {params['branching_factor']} "
-                f"--merge-criterion {params['merge_criterion']} "
-                f"--fp-type {params['fp_type']} "
-                f"--n-bits {params['n_bits']} "
-                f"--reclustering-iterations {params['reclustering_iterations']} "
-                f"--extra-threshold {params['extra_threshold']}"
-            )
+        with open(script_path, "w") as f:
+            f.write("#!/bin/bash\n\n")
 
-            f.write(f"cat > {job_script} <<'JOBEOF'\n")
-            f.write("#!/bin/bash\n")
-            f.write(f"#SBATCH --job-name={job_name}\n")
-            f.write(f"#SBATCH --output={out_log}\n")
-            f.write(f"#SBATCH --mem={slurm_params['mem']}\n")
-            f.write(f"#SBATCH --cpus-per-task={slurm_params['cpus']}\n")
-            f.write(f"#SBATCH --time={slurm_params['time']}\n")
-            if slurm_params.get('partition'):
-                f.write(f"#SBATCH --partition={slurm_params['partition']}\n")
-            f.write("\n")
-            f.write("# Load conda module\n")
-            f.write("module load conda\n\n")
-            f.write("# Activate iChem environment\n")
-            f.write("conda activate iChem\n\n")
-            f.write(f"{cmd}\n")
-            f.write("JOBEOF\n")
-            f.write(f"sbatch {job_script}\n")
-            f.write(f"rm {job_script}\n\n")
+            for label, file_batch, start_idx, end_idx in batch_chunk:
+                job_name = f"initial_{label}"
+                out_log = output_dir / f"logs/initial_{label}_%j.log"
+                job_script = output_dir / f".job_initial_{label}.sh"
 
-    script_path.chmod(0o755)
-    return script_path
+                files_str = " ".join(str(f) for f in file_batch)
+
+                cmd = (
+                    f"python -m iChem.bitbirch._hpc_initial "
+                    f"--smi-files {files_str} "
+                    f"--start-idx {start_idx} --end-idx {end_idx} "
+                    f"--label {label} "
+                    f"--output-dir {output_dir} "
+                    f"--threshold {params['threshold']} "
+                    f"--branching-factor {params['branching_factor']} "
+                    f"--merge-criterion {params['merge_criterion']} "
+                    f"--fp-type {params['fp_type']} "
+                    f"--n-bits {params['n_bits']} "
+                    f"--reclustering-iterations {params['reclustering_iterations']} "
+                    f"--extra-threshold {params['extra_threshold']}"
+                )
+
+                f.write(f"cat > {job_script} <<'JOBEOF'\n")
+                f.write("#!/bin/bash\n")
+                f.write(f"#SBATCH --job-name={job_name}\n")
+                f.write(f"#SBATCH --output={out_log}\n")
+                f.write(f"#SBATCH --mem={slurm_params['mem']}\n")
+                f.write(f"#SBATCH --cpus-per-task={slurm_params['cpus']}\n")
+                f.write(f"#SBATCH --time={slurm_params['time']}\n")
+                if slurm_params.get('partition'):
+                    f.write(f"#SBATCH --partition={slurm_params['partition']}\n")
+                f.write("\n")
+                f.write("# Load conda module\n")
+                f.write("module load conda\n\n")
+                f.write("# Activate iChem environment\n")
+                f.write("conda activate iChem\n\n")
+                f.write(f"{cmd}\n")
+                f.write("JOBEOF\n")
+                f.write(f"sbatch {job_script}\n")
+                f.write(f"rm {job_script}\n\n")
+
+        script_path.chmod(0o755)
+        script_paths.append(script_path)
+
+    return script_paths
 
 
 def prepare_initial_round_jobs(
@@ -133,8 +153,9 @@ def prepare_initial_round_jobs(
     slurm_time: str = _config.SLURM_TIME,
     slurm_partition: str = _config.SLURM_PARTITION,
     result_base_dir: Path | None = None,
+    max_jobs_per_script: int = _config.MAX_JOBS_PER_SCRIPT,
     verbose: bool = False,
-) -> Path:
+) -> list[Path]:
     r"""Prepare and generate initial round job submission script.
 
     Parameters
@@ -213,20 +234,27 @@ def prepare_initial_round_jobs(
         "partition": slurm_partition,
     }
 
-    script_path = _generate_initial_round_script(
+    script_paths = _generate_initial_round_script(
         batches,
         output_dir,
         params,
         slurm_params,
         result_base_dir,
+        max_jobs_per_script,
     )
 
     if verbose:
-        rel_path = os.path.relpath(script_path, os.getcwd())
-        print(f"\n✓ Generated submission script: {script_path}")
-        print(f"  Run with: bash {rel_path}")
+        if len(script_paths) == 1:
+            rel_path = os.path.relpath(script_paths[0], os.getcwd())
+            print(f"\n✓ Generated submission script: {script_paths[0]}")
+            print(f"  Run with: bash {rel_path}")
+        else:
+            print(f"\n✓ Generated {len(script_paths)} submission scripts (max {max_jobs_per_script} jobs per script):")
+            for i, path in enumerate(script_paths, 1):
+                rel_path = os.path.relpath(path, os.getcwd())
+                print(f"  {i}. bash {rel_path}")
 
-    return script_path
+    return script_paths[0] if len(script_paths) == 1 else script_paths
 
 
 if __name__ == "__main__":

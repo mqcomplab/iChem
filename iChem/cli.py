@@ -87,6 +87,7 @@ def _build_parser() -> argparse.ArgumentParser:
     initial_round_parser.add_argument("input", nargs="+", type=Path, help="Input .smi or .smi.gz files")
     initial_round_parser.add_argument("--out-dir", type=Path, required=True, help="Output directory for job scripts and logs")
     initial_round_parser.add_argument("--files-per-job", type=int, default=_config.FILES_PER_JOB, help="Number of files per job")
+    initial_round_parser.add_argument("--max-jobs-per-script", type=int, default=_config.MAX_JOBS_PER_SCRIPT, help="Maximum jobs per submission script")
     initial_round_parser.add_argument("--threshold", type=float, default=_config.THRESHOLD, help="BitBirch threshold")
     initial_round_parser.add_argument("--branching-factor", type=int, default=_config.BRANCHING_FACTOR, help="BitBirch branching factor")
     initial_round_parser.add_argument("--merge-criterion", default=_config.MERGE_CRITERION, help="Merge criterion")
@@ -107,6 +108,7 @@ def _build_parser() -> argparse.ArgumentParser:
     midsection_round_parser.add_argument("--output-dir", type=Path, required=True, help="Output directory containing previous round results")
     midsection_round_parser.add_argument("--round-idx", type=int, required=True, help="Current round index")
     midsection_round_parser.add_argument("--bin-size", type=int, default=_config.BIN_SIZE, help="Number of buffer/index pairs per batch job")
+    midsection_round_parser.add_argument("--max-jobs-per-script", type=int, default=_config.MAX_JOBS_PER_SCRIPT, help="Maximum jobs per submission script")
     midsection_round_parser.add_argument("--threshold", type=float, default=None, help="BitBirch threshold (default: same as config)")
     midsection_round_parser.add_argument("--branching-factor", type=int, default=None, help="BitBirch branching factor (default: same as config)")
     midsection_round_parser.add_argument("--merge-criterion", default=_config.MERGE_CRITERION, help="Merge criterion")
@@ -200,7 +202,7 @@ def _run_initial_round(args: argparse.Namespace) -> int:
     if not input_files:
         raise ValueError("No input files were found")
 
-    script_path = prepare_initial_round_jobs(
+    script_paths = prepare_initial_round_jobs(
         input_files=input_files,
         output_dir=args.out_dir,
         files_per_job=args.files_per_job,
@@ -216,17 +218,25 @@ def _run_initial_round(args: argparse.Namespace) -> int:
         slurm_time=args.slurm_time,
         slurm_partition=args.slurm_partition,
         result_base_dir=args.result_base_dir,
+        max_jobs_per_script=args.max_jobs_per_script,
         verbose=args.verbose,
     )
 
-    print(f"\n✓ Generated submission script: {script_path}")
-    print(f"Run the following to submit all initial round jobs:")
-    print(f"\n  ./{script_path.name}\n")
+    # Handle single or multiple scripts
+    if isinstance(script_paths, list):
+        print(f"\n✓ Generated {len(script_paths)} submission scripts:")
+        for i, path in enumerate(script_paths, 1):
+            print(f"  {i}. {path}")
+        print(f"\nRun each script to submit batches of jobs (max {args.max_jobs_per_script} per script)")
+    else:
+        print(f"\n✓ Generated submission script: {script_paths}")
+        print(f"Run the following to submit all initial round jobs:")
+        print(f"\n  ./{script_paths.name}\n")
     return 0
 
 
 def _run_midsection_round(args: argparse.Namespace) -> int:
-    script_path = prepare_midsection_round_jobs(
+    script_paths = prepare_midsection_round_jobs(
         output_dir=args.output_dir,
         round_idx=args.round_idx,
         bin_size=args.bin_size,
@@ -239,12 +249,20 @@ def _run_midsection_round(args: argparse.Namespace) -> int:
         slurm_cpus=args.slurm_cpus,
         slurm_time=args.slurm_time,
         slurm_partition=args.slurm_partition,
+        max_jobs_per_script=args.max_jobs_per_script,
         verbose=args.verbose,
     )
 
-    print(f"\n✓ Generated submission script: {script_path}")
-    print(f"Run the following to submit all midsection round jobs:")
-    print(f"\n  ./{script_path.name}\n")
+    # Handle single or multiple scripts
+    if isinstance(script_paths, list):
+        print(f"\n✓ Generated {len(script_paths)} submission scripts:")
+        for i, path in enumerate(script_paths, 1):
+            print(f"  {i}. {path}")
+        print(f"\nRun each script to submit batches of jobs (max {args.max_jobs_per_script} per script)")
+    else:
+        print(f"\n✓ Generated submission script: {script_paths}")
+        print(f"Run the following to submit all midsection round jobs:")
+        print(f"\n  ./{script_paths.name}\n")
     return 0
 
 
