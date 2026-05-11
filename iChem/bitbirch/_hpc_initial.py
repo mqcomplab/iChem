@@ -82,20 +82,14 @@ def _save_bufs_and_mol_idxs(
 
 
 def _get_or_create_result_dir(base_dir: Path | None = None) -> Path:
-    """Create or get bb_multiround_results/{random_id} directory."""
+    """Get or create results directory. Uses base_dir directly if provided."""
     if base_dir is None:
-        base_dir = Path.cwd()
+        base_dir = Path.cwd() / "bb_multiround_results" / str(uuid.uuid4())[:8]
     else:
         base_dir = Path(base_dir)
 
-    results_dir = base_dir / "bb_multiround_results"
-    results_dir.mkdir(parents=True, exist_ok=True)
-
-    result_id = str(uuid.uuid4())[:8]
-    work_dir = results_dir / result_id
-    work_dir.mkdir(parents=True, exist_ok=True)
-
-    return work_dir
+    base_dir.mkdir(parents=True, exist_ok=True)
+    return base_dir
 
 
 def main(args: argparse.Namespace) -> None:

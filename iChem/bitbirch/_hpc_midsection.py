@@ -84,48 +84,68 @@ def main(args: argparse.Namespace) -> None:
     Takes results from previous round and produces new buffers/indices for next round.
     """
     start_time = time.time()
-    output_dir = Path(args.output_dir)
-    round_idx = args.round_idx
-    batch_label = args.batch_label
-    file_pairs_str = args.file_pairs
+    mem_tracker = MemoryTracker()
+    mem_tracker.start()
 
-    print(f"[Round {round_idx}, Batch {batch_label}] Starting midsection clustering")
+    try:
+        output_dir = Path(args.output_dir)
+        round_idx = args.round_idx
+        batch_label = args.batch_label
+        file_pairs_str = args.file_pairs
 
-    file_pairs = []
-    for pair_str in file_pairs_str.split(","):
-        buf_path, idx_path = pair_str.split(":")
-        file_pairs.append((Path(buf_path), Path(idx_path)))
+        print(f"[Round {round_idx}, Batch {batch_label}] Starting midsection clustering")
 
-    print(f"[Round {round_idx}, Batch {batch_label}] Processing {len(file_pairs)} file pairs")
+        file_pairs = []
+        for pair_str in file_pairs_str.split(","):
+            buf_path, idx_path = pair_str.split(":")
+            file_pairs.append((Path(buf_path), Path(idx_path)))
 
-    tree = BitBirch(
-        threshold=args.threshold,
-        branching_factor=args.branching_factor,
-        merge_criterion=args.merge_criterion,
-    )
+        print(f"[Round {round_idx}, Batch {batch_label}] Processing {len(file_pairs)} file pairs")
 
-    for buf_path, idx_path in file_pairs:
-        print(f"[Round {round_idx}, Batch {batch_label}] Loading {buf_path.name}")
-        with open(idx_path, "rb") as f:
-            mol_idxs = pickle.load(f)
-        tree._fit_buffers(buf_path, reinsert_index_seqs=mol_idxs)
-        del mol_idxs
-
-    if args.reclustering_iterations > 0:
-        print(f"[Round {round_idx}, Batch {batch_label}] Reclustering ({args.reclustering_iterations} iterations)")
-        tree.recluster_inplace(
-            iterations=args.reclustering_iterations,
-            extra_threshold=args.extra_threshold,
+        tree = BitBirch(
+            threshold=args.threshold,
+            branching_factor=args.branching_factor,
+            merge_criterion=args.merge_criterion,
         )
 
-    tree.delete_internal_nodes()
+        for buf_path, idx_path in file_pairs:
+            print(f"[Round {round_idx}, Batch {batch_label}] Loading {buf_path.name}")
+            with open(idx_path, "rb") as f:
+                mol_idxs = pickle.load(f)
+            tree._fit_buffers(buf_path, reinsert_index_seqs=mol_idxs)
+            del mol_idxs
 
-    print(f"[Round {round_idx}, Batch {batch_label}] Saving results")
-    fps_bfs, mols_bfs = tree._bf_to_np()
-    _save_bufs_and_mol_idxs(output_dir, fps_bfs, mols_bfs, batch_label, round_idx)
+        if args.reclustering_iterations > 0:
+            print(f"[Round {round_idx}, Batch {batch_label}] Reclustering ({args.reclustering_iterations} iterations)")
+            tree.recluster_inplace(
+                iterations=args.reclustering_iterations,
+                extra_threshold=args.extra_threshold,
+            )
 
-    total_time = time.time() - start_time
-    print(f"[Round {round_idx}, Batch {batch_label}] ✓ Complete ({total_time:.2f}s)")
+        tree.delete_internal_nodes()
+
+        print(f"[Round {round_idx}, Batch {batch_label}] Saving results")
+        fps_bfs, mols_bfs = tree._bf_to_np()
+        _save_bufs_and_mol_idxs(output_dir, fps_bfs, mols_bfs, batch_label, round_idx)
+
+        # Cleanup previous round files
+        prev_round_idx = round_idx - 1
+        for buf_file in output_dir.glob(f"round-{prev_round_idx}-bufs*.npy"):
+            try:
+                buf_file.unlink()
+            except Exception as e:
+                print(f"[Round {round_idx}, Batch {batch_label}] Warning: Could not delete {buf_file.name}: {e}")
+        for idx_file in output_dir.glob(f"round-{prev_round_idx}-idxs*.pkl"):
+            try:
+                idx_file.unlink()
+            except Exception as e:
+                print(f"[Round {round_idx}, Batch {batch_label}] Warning: Could not delete {idx_file.name}: {e}")
+
+        total_time = time.time() - start_time
+        mem_str = mem_tracker.get_peak_memory_str()
+        print(f"[Round {round_idx}, Batch {batch_label}] ✓ Complete ({total_time:.2f}s{mem_str})")
+    finally:
+        mem_tracker.stop()
 
 
 if __name__ == "__main__":

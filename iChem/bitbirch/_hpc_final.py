@@ -109,6 +109,18 @@ def main(args: argparse.Namespace) -> None:
                 pickle.dump(tree.get_cluster_mol_ids(), f)
             print(f"[Final Round] Saved cluster assignments")
 
+        # Cleanup all round files
+        for buf_file in output_dir.glob("round-*-bufs*.npy"):
+            try:
+                buf_file.unlink()
+            except Exception as e:
+                print(f"[Final Round] Warning: Could not delete {buf_file.name}: {e}")
+        for idx_file in output_dir.glob("round-*-idxs*.pkl"):
+            try:
+                idx_file.unlink()
+            except Exception as e:
+                print(f"[Final Round] Warning: Could not delete {idx_file.name}: {e}")
+
         total_time = time.time() - start_time
         mem_str = mem_tracker.get_peak_memory_str()
         print(f"[Final Round] ✓ Complete ({total_time:.2f}s{mem_str})")
