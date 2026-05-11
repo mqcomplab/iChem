@@ -1,5 +1,6 @@
 r"""Hidden module for submitting final round HPC job."""
 import argparse
+import os
 from pathlib import Path
 from datetime import datetime
 
@@ -185,8 +186,9 @@ def prepare_final_round_job(
     )
 
     if verbose:
+        rel_path = os.path.relpath(script_path, os.getcwd())
         print(f"\n✓ Generated submission script: {script_path}")
-        print(f"  Run with: ./{script_path.name}")
+        print(f"  Run with: bash {rel_path}")
 
     return script_path
 

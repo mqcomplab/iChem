@@ -2,6 +2,7 @@ r"""Hidden module for submitting initial round HPC jobs."""
 import argparse
 import math
 import typing as tp
+import os
 from pathlib import Path
 from datetime import datetime
 import gzip as gz
@@ -221,8 +222,9 @@ def prepare_initial_round_jobs(
     )
 
     if verbose:
+        rel_path = os.path.relpath(script_path, os.getcwd())
         print(f"\n✓ Generated submission script: {script_path}")
-        print(f"  Run with: bash {script_path}")
+        print(f"  Run with: bash {rel_path}")
 
     return script_path
 
