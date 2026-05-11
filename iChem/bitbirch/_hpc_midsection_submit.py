@@ -15,7 +15,7 @@ def _get_prev_round_buf_and_mol_idxs_files(
     round_idx: int,
 ) -> list[tuple[Path, Path]]:
     """Get buffer and index files from previous round."""
-    path = Path(path)
+    path = Path(path).resolve()
     buf_files = sorted(path.glob(f"round-{round_idx - 1}-bufs*.npy"))
     idx_files = sorted(path.glob(f"round-{round_idx - 1}-idxs*.pkl"))
 

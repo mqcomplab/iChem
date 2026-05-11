@@ -65,7 +65,7 @@ def main(args: argparse.Namespace) -> None:
         file_pairs = []
         for pair_str in file_pairs_str.split(","):
             buf_path, idx_path = pair_str.split(":")
-            file_pairs.append((Path(buf_path), Path(idx_path)))
+            file_pairs.append((Path(buf_path).resolve(), Path(idx_path).resolve()))
 
         print(f"[Final Round] Processing {len(file_pairs)} file pairs")
 
