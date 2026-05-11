@@ -63,6 +63,7 @@ def _generate_midsection_round_script(
     slurm_params: dict,
 ) -> Path:
     """Generate shell script for midsection round job submission."""
+    output_dir = output_dir.resolve()
     script_path = output_dir / f"submit_midsection_round_{round_idx}_jobs.sh"
 
     with open(script_path, "w") as f:

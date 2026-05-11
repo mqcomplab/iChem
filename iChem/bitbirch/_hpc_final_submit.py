@@ -35,6 +35,7 @@ def _generate_final_round_script(
     slurm_params: dict,
 ) -> Path:
     """Generate shell script for final round job submission."""
+    output_dir = output_dir.resolve()
     script_path = output_dir / "submit_final_round_job.sh"
 
     job_name = "final_round"

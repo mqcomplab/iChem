@@ -62,9 +62,10 @@ def _generate_initial_round_script(
     result_base_dir: Path | None = None,
 ) -> Path:
     """Generate shell script for initial round job submission."""
+    output_dir = output_dir.resolve()
     script_path = output_dir / "submit_initial_jobs.sh"
 
-    result_dir_arg = f" --output-dir {result_base_dir}" if result_base_dir else ""
+    result_dir_arg = f" --output-dir {result_base_dir.resolve()}" if result_base_dir else ""
 
     with open(script_path, "w") as f:
         f.write("#!/bin/bash\n\n")
