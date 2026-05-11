@@ -2,7 +2,6 @@ r"""Hidden module for HPC initial round: fingerprint generation + clustering."""
 import argparse
 import time
 import threading
-import io
 from pathlib import Path
 import gzip as gz
 import pickle
@@ -111,9 +110,12 @@ def main(args: argparse.Namespace) -> None:
             if smi_file.suffix == '.smi':
                 smiles = load_smiles(smi_file)
             elif is_smi_gz:
+                smiles = []
                 with gz.open(smi_file, 'rt') as f:
-                    content = f.read()
-                smiles = load_smiles(io.StringIO(content))
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            smiles.append(line.split()[0])
             else:
                 raise ValueError(f"Unsupported file type: {smi_file.suffix}")
 
