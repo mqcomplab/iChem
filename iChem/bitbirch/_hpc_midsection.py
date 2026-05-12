@@ -128,18 +128,16 @@ def main(args: argparse.Namespace) -> None:
         fps_bfs, mols_bfs = tree._bf_to_np()
         _save_bufs_and_mol_idxs(output_dir, fps_bfs, mols_bfs, batch_label, round_idx)
 
-        # Cleanup previous round files
-        prev_round_idx = round_idx - 1
-        for buf_file in output_dir.glob(f"round-{prev_round_idx}-bufs*.npy"):
+        # Cleanup only the specific files this job processed
+        for buf_path, idx_path in file_pairs:
             try:
-                buf_file.unlink()
+                buf_path.unlink()
             except Exception as e:
-                print(f"[Round {round_idx}, Batch {batch_label}] Warning: Could not delete {buf_file.name}: {e}")
-        for idx_file in output_dir.glob(f"round-{prev_round_idx}-idxs*.pkl"):
+                print(f"[Round {round_idx}, Batch {batch_label}] Warning: Could not delete {buf_path.name}: {e}")
             try:
-                idx_file.unlink()
+                idx_path.unlink()
             except Exception as e:
-                print(f"[Round {round_idx}, Batch {batch_label}] Warning: Could not delete {idx_file.name}: {e}")
+                print(f"[Round {round_idx}, Batch {batch_label}] Warning: Could not delete {idx_path.name}: {e}")
 
         total_time = time.time() - start_time
         mem_str = mem_tracker.get_peak_memory_str()
