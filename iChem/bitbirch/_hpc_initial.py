@@ -1,7 +1,8 @@
 r"""Hidden module for HPC initial round: fingerprint generation + clustering."""
 import argparse
 import time
-import threading
+import multiprocessing as mp
+import os
 from pathlib import Path
 import gzip as gz
 import pickle
@@ -9,43 +10,62 @@ import pickle
 import numpy as np
 from bblean import BitBirch
 from bblean.fingerprints import _get_fps_file_num
-import psutil
 
 from ..utils import binary_fps, load_smiles
 from . import _config
 
+_BYTES_TO_GIB = 1 / 1024**3
 
-class MemoryTracker:
-    """Track peak RSS memory usage in a background thread."""
-    def __init__(self):
-        self.peak_memory_gb = 0.0
-        self.running = False
-        self.thread = None
 
-    def start(self):
-        self.running = True
-        self.thread = threading.Thread(target=self._sample_memory, daemon=True)
-        self.thread.start()
+def _monitor_rss_process(file: Path | str, interval_s: float, start_time: float, parent_pid: int) -> None:
+    """Monitor RSS peak (parent + all children)."""
+    import psutil
+    file = Path(file)
+    this_pid = os.getpid()
+    ps = psutil.Process(parent_pid)
 
-    def stop(self):
-        self.running = False
-        if self.thread:
-            self.thread.join(timeout=1)
-
-    def _sample_memory(self):
-        proc = psutil.Process()
-        while self.running:
+    def total_rss() -> float:
+        total_rss = ps.memory_info().rss
+        for proc in ps.children(recursive=True):
+            if proc.pid == this_pid:
+                continue
             try:
-                rss_gb = proc.memory_info().rss / 1024 / 1024 / 1024
-                self.peak_memory_gb = max(self.peak_memory_gb, rss_gb)
-            except Exception:
-                pass
-            time.sleep(0.1)
+                total_rss += proc.memory_info().rss
+            except psutil.NoSuchProcess:
+                continue
+        return total_rss
 
-    def get_peak_memory_str(self):
-        if self.peak_memory_gb > 0:
-            return f" ({self.peak_memory_gb:.2f} GB peak)"
-        return ""
+    with open(file, mode="w", encoding="utf-8") as f:
+        f.write("rss_gib,time_s\n")
+        f.flush()
+        os.fsync(f.fileno())
+
+    max_rss_gib = 0.0
+    while True:
+        total_rss_gib = total_rss() * _BYTES_TO_GIB
+        with open(file, mode="a", encoding="utf-8") as f:
+            f.write(f"{total_rss_gib},{time.perf_counter() - start_time}\n")
+            f.flush()
+            os.fsync(f.fileno())
+        if total_rss_gib > max_rss_gib:
+            max_rss_gib = total_rss_gib
+            with open(file.parent / "max-rss.json", mode="w", encoding="utf-8") as f:
+                f.write(f"{max_rss_gib}\n")
+                f.flush()
+                os.fsync(f.fileno())
+        time.sleep(interval_s)
+
+
+def _get_peak_memory_gib(out_dir: Path) -> float:
+    """Read peak memory from monitor daemon."""
+    file = out_dir / "max-rss.json"
+    try:
+        if file.exists():
+            with open(file, mode="r", encoding="utf-8") as f:
+                return float(f.read().strip())
+    except Exception:
+        pass
+    return 0.0
 
 
 
@@ -86,23 +106,40 @@ def main(args: argparse.Namespace) -> None:
     Uses global molecule indices to preserve molecule identity across batches.
     Saves results to the specified output directory.
     """
-    start_time = time.time()
-    mem_tracker = MemoryTracker()
-    mem_tracker.start()
+    start_time = time.perf_counter()
+    smi_files = [Path(f) for f in args.smi_files]
+    start_idx = args.start_idx
+    end_idx = args.end_idx
+    label = args.label
+    output_dir = Path(args.output_dir).resolve() if args.output_dir else Path.cwd().resolve()
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    monitor_file = output_dir / f"memory-{label}.csv"
+    monitor_proc = mp.Process(
+        target=_monitor_rss_process,
+        kwargs=dict(
+            file=monitor_file,
+            interval_s=0.1,
+            start_time=start_time,
+            parent_pid=os.getpid(),
+        ),
+        daemon=True,
+    )
+    monitor_proc.start()
 
     try:
-        smi_files = [Path(f) for f in args.smi_files]
-        start_idx = args.start_idx
-        end_idx = args.end_idx
-        label = args.label
-        output_dir = Path(args.output_dir).resolve() if args.output_dir else Path.cwd().resolve()
-
-        output_dir.mkdir(parents=True, exist_ok=True)
-
         print(f"[{label}] Processing {len(smi_files)} SMILES files (global indices {start_idx}-{end_idx})")
         print(f"[{label}] Results directory: {output_dir}")
 
-        all_smiles = []
+        print(f"[{label}] Starting BitBirch clustering")
+        tree = BitBirch(
+            threshold=args.threshold,
+            branching_factor=args.branching_factor,
+            merge_criterion=args.merge_criterion,
+        )
+
+        current_idx = start_idx
         for smi_file in smi_files:
             print(f"[{label}] Loading {smi_file}")
             is_smi_gz = smi_file.name.endswith('.smi.gz')
@@ -119,47 +156,40 @@ def main(args: argparse.Namespace) -> None:
             else:
                 raise ValueError(f"Unsupported file type: {smi_file.suffix}")
 
-            all_smiles.extend(smiles)
+            print(f"[{label}] Loaded {len(smiles)} SMILES from {smi_file}")
+            idx_range = range(current_idx, current_idx + len(smiles))
+            current_idx += len(smiles)
+            print(f"[{label}] Assigning global indices {idx_range.start} to {idx_range.stop - 1}")
 
-        print(f"[{label}] Total molecules loaded: {len(all_smiles)}")
-        expected_count = end_idx - start_idx
-        if len(all_smiles) != expected_count:
-            print(f"[{label}] Warning: Expected {expected_count} molecules, got {len(all_smiles)}")
-
-        print(f"[{label}] Generating {args.fp_type} fingerprints ({args.n_bits} bits)")
-        fps, invalid_ids = binary_fps(
-            all_smiles,
-            fp_type=args.fp_type,
-            n_bits=args.n_bits,
-            packed=True,
-            return_invalid=True,
-        )
-
-        if invalid_ids:
-            print(f"[{label}] Removed {len(invalid_ids)} invalid molecules")
-            idx_range = [start_idx + i for i in range(len(all_smiles)) if i not in invalid_ids]
-        else:
-            idx_range = list(range(start_idx, end_idx))
-
-        npy_path = output_dir / f"temp_fps_{label}.npy"
-        np.save(npy_path, fps)
-        print(f"[{label}] Saved fingerprints to {npy_path}")
-
-        del fps
-        del all_smiles
-
-        if len(idx_range) != _get_fps_file_num(npy_path):
-            raise ValueError(
-                f"Mismatch: {len(idx_range)} indices but {_get_fps_file_num(npy_path)} fps"
+            print(f"[{label}] Generating {args.fp_type} fingerprints ({args.n_bits} bits)")
+            fps, invalid_ids = binary_fps(
+                smiles,
+                fp_type=args.fp_type,
+                n_bits=args.n_bits,
+                packed=True,
+                return_invalid=True,
             )
 
-        print(f"[{label}] Starting BitBirch clustering")
-        tree = BitBirch(
-            threshold=args.threshold,
-            branching_factor=args.branching_factor,
-            merge_criterion=args.merge_criterion,
-        )
-        tree.fit(npy_path, reinsert_indices=idx_range)
+            if invalid_ids:
+                print(f"[{label}] Warning: Found {len(invalid_ids)} invalid SMILES in {smi_file}")
+                valid_indices = [idx for i, idx in enumerate(idx_range) if i not in invalid_ids]
+                print(f"[{label}] Retaining {len(valid_indices)} valid SMILES")
+            else:
+                valid_indices = list(idx_range)
+
+            del smiles
+
+            npy_path = output_dir / f"temp_fps_{label}.npy"
+            np.save(npy_path, fps)
+            print(f"[{label}] Saved temporary fingerprints to {npy_path}")
+            del fps
+
+            if len(valid_indices) != _get_fps_file_num(npy_path):
+                raise ValueError(
+                    f"Mismatch: {len(valid_indices)} indices but {_get_fps_file_num(npy_path)} fps"
+                )
+
+            tree.fit(npy_path, reinsert_indices=valid_indices)
 
         if args.reclustering_iterations > 0:
             print(f"[{label}] Reclustering ({args.reclustering_iterations} iterations)")
@@ -180,11 +210,13 @@ def main(args: argparse.Namespace) -> None:
         except Exception as e:
             print(f"[{label}] Warning: Could not delete {npy_path}: {e}")
 
-        total_time = time.time() - start_time
-        mem_str = mem_tracker.get_peak_memory_str()
+        total_time = time.perf_counter() - start_time
+        peak_mem = _get_peak_memory_gib(output_dir)
+        mem_str = f" ({peak_mem:.2f} GB peak)" if peak_mem > 0 else ""
         print(f"[{label}] ✓ Complete ({total_time:.2f}s{mem_str})")
     finally:
-        mem_tracker.stop()
+        monitor_proc.terminate()
+        monitor_proc.join(timeout=2)
 
 
 if __name__ == "__main__":
