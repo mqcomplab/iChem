@@ -62,10 +62,10 @@ def binary_fps(smiles: list,
     """
 
     # Divide the smiles into chunks and generate fingerprints for each chunk in parallel
-    cpu_count = min(cpu_count(), CPU_CORES)
-    smiles_tasks = np.array_split(smiles, cpu_count)
+    n_cpus = min(cpu_count(), CPU_CORES)
+    smiles_tasks = np.array_split(smiles, n_cpus)
 
-    with Pool(cpu_count) as pool:
+    with Pool(n_cpus) as pool:
         results = pool.starmap(
             _binary_fps,
             [(chunk, fp_type, n_bits, return_invalid, standarize, packed) for chunk in smiles_tasks]
