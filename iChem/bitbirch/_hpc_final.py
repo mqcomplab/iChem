@@ -13,55 +13,24 @@ from . import _config
 _BYTES_TO_GIB = 1 / 1024**3
 
 
-def _monitor_rss_process(file: Path | str, interval_s: float, start_time: float, parent_pid: int) -> None:
-    """Monitor RSS peak (parent + all children)."""
+def _monitor_rss_process(max_rss_value, parent_pid: int, interval_s: float) -> None:
+    """Monitor RSS peak for parent process only."""
     import psutil
-    file = Path(file)
-    this_pid = os.getpid()
     ps = psutil.Process(parent_pid)
 
-    def total_rss() -> float:
-        total_rss = ps.memory_info().rss
-        for proc in ps.children(recursive=True):
-            if proc.pid == this_pid:
-                continue
-            try:
-                total_rss += proc.memory_info().rss
-            except psutil.NoSuchProcess:
-                continue
-        return total_rss
-
-    with open(file, mode="w", encoding="utf-8") as f:
-        f.write("rss_gib,time_s\n")
-        f.flush()
-        os.fsync(f.fileno())
-
-    max_rss_gib = 0.0
     while True:
-        total_rss_gib = total_rss() * _BYTES_TO_GIB
-        with open(file, mode="a", encoding="utf-8") as f:
-            f.write(f"{total_rss_gib},{time.perf_counter() - start_time}\n")
-            f.flush()
-            os.fsync(f.fileno())
-        if total_rss_gib > max_rss_gib:
-            max_rss_gib = total_rss_gib
-            with open(file.parent / "max-rss.json", mode="w", encoding="utf-8") as f:
-                f.write(f"{max_rss_gib}\n")
-                f.flush()
-                os.fsync(f.fileno())
+        try:
+            rss_gib = ps.memory_info().rss * _BYTES_TO_GIB
+            if rss_gib > max_rss_value.value:
+                max_rss_value.value = rss_gib
+        except psutil.NoSuchProcess:
+            break
+        except Exception:
+            pass
         time.sleep(interval_s)
 
 
-def _get_peak_memory_gib(out_dir: Path) -> float:
-    """Read peak memory from monitor daemon."""
-    file = out_dir / "max-rss.json"
-    try:
-        if file.exists():
-            with open(file, mode="r", encoding="utf-8") as f:
-                return float(f.read().strip())
-    except Exception:
-        pass
-    return 0.0
+
 
 
 
@@ -76,15 +45,10 @@ def main(args: argparse.Namespace) -> None:
     round_idx = args.round_idx
     file_pairs_str = args.file_pairs
 
-    monitor_file = output_dir / "memory-final.csv"
+    max_rss_value = mp.Value('d', 0.0)
     monitor_proc = mp.Process(
         target=_monitor_rss_process,
-        kwargs=dict(
-            file=monitor_file,
-            interval_s=0.1,
-            start_time=start_time,
-            parent_pid=os.getpid(),
-        ),
+        args=(max_rss_value, os.getpid(), 0.1),
         daemon=True,
     )
     monitor_proc.start()
@@ -152,8 +116,7 @@ def main(args: argparse.Namespace) -> None:
                 print(f"[Final Round] Warning: Could not delete {idx_file.name}: {e}")
 
         total_time = time.perf_counter() - start_time
-        peak_mem = _get_peak_memory_gib(output_dir)
-        mem_str = f" ({peak_mem:.2f} GB peak)" if peak_mem > 0 else ""
+        mem_str = f" ({max_rss_value.value:.2f} GB peak)" if max_rss_value.value > 0 else ""
         print(f"[Final Round] ✓ Complete ({total_time:.2f}s{mem_str})")
         print(f"[Final Round] Results saved to: {output_dir}")
     finally:
