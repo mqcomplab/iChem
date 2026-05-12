@@ -131,6 +131,7 @@ def _binary_fps(smiles: list,
         except:
           print('Invalid SMILES: ', smi)
           invalid_smiles.append(k)
+          continue
 
         try:
             # Generate the fingerprint and store directly in array
@@ -226,7 +227,7 @@ def _count_fps(smiles: list,
         except:
             print('Invalid SMILES: ', smi)
             invalid_smiles.append(k)
-            exit(0)
+            continue
 
         try:
             # Generate the count fingerprint and store directly in array
