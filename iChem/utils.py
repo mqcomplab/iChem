@@ -63,13 +63,17 @@ def binary_fps(smiles: list,
 
     # Divide the smiles into chunks and generate fingerprints for each chunk in parallel
     n_cpus = min(cpu_count(), CPU_CORES)
-    smiles_tasks = np.array_split(smiles, n_cpus)
+    smiles_chunks = np.array_split(smiles, n_cpus)
+
+    # Create list of (chunk, chunk_offset, ...) tuples for parallel processing
+    chunk_tasks = []
+    offset = 0
+    for chunk in smiles_chunks:
+        chunk_tasks.append((chunk, offset, fp_type, n_bits, return_invalid, standarize, packed))
+        offset += len(chunk)
 
     with Pool(n_cpus) as pool:
-        results = pool.starmap(
-            _binary_fps,
-            [(chunk, fp_type, n_bits, return_invalid, standarize, packed) for chunk in smiles_tasks]
-        )
+        results = pool.starmap(_binary_fps, chunk_tasks)
 
     # Concatenate the results from all chunks
     if return_invalid:
@@ -85,6 +89,7 @@ def binary_fps(smiles: list,
 
 
 def _binary_fps(smiles: list,
+               chunk_offset: int = 0,
                fp_type: str = 'RDKIT',
                n_bits: int = 2048,
                return_invalid: bool = False,
@@ -146,9 +151,10 @@ def _binary_fps(smiles: list,
 
     # Trim array to only include valid fingerprints
     fingerprints = fingerprints[:valid_idx]
-    
+
     if return_invalid:
-        return fingerprints, invalid_smiles
+        adjusted_invalid = [idx + chunk_offset for idx in invalid_smiles]
+        return fingerprints, adjusted_invalid
     else:
         return fingerprints
     
@@ -169,12 +175,17 @@ def count_fps(smiles: list,
     and list of invalid SMILES indices if return_invalid is True
         """
     
-    smiles_tasks = np.array_split(smiles, cpu_count())
+    smiles_chunks = np.array_split(smiles, cpu_count())
+
+    # Create list of (chunk, chunk_offset, ...) tuples for parallel processing
+    chunk_tasks = []
+    offset = 0
+    for chunk in smiles_chunks:
+        chunk_tasks.append((chunk, offset, fp_type, n_bits, return_invalid))
+        offset += len(chunk)
+
     with Pool(cpu_count()) as pool:
-        results = pool.starmap(
-            _count_fps,
-            [(chunk, fp_type, n_bits, return_invalid) for chunk in smiles_tasks]
-        )
+        results = pool.starmap(_count_fps, chunk_tasks)
 
     if return_invalid:
         fps = np.concatenate([res[0] for res in results])
@@ -188,6 +199,7 @@ def count_fps(smiles: list,
         return fps
     
 def _count_fps(smiles: list,
+              chunk_offset: int = 0,
               fp_type: str = 'RDKIT',
               n_bits: int = 2048,
               return_invalid: bool = True) -> np.ndarray:
@@ -242,7 +254,8 @@ def _count_fps(smiles: list,
     fingerprints = fingerprints[:valid_idx]
 
     if return_invalid:
-        return fingerprints, invalid_smiles
+        adjusted_invalid = [idx + chunk_offset for idx in invalid_smiles]
+        return fingerprints, adjusted_invalid
     else:
         return fingerprints
 
