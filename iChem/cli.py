@@ -131,7 +131,7 @@ def _build_parser() -> argparse.ArgumentParser:
     final_round_parser.add_argument("--reclustering-iterations", type=int, default=_config.RECLUSTERING_ITERATIONS_FINAL, help="Reclustering iterations")
     final_round_parser.add_argument("--reclustering-extra-threshold", type=float, default=_config.RECLUSTERING_EXTRA_THRESHOLD, help="Extra threshold for reclustering")
     final_round_parser.add_argument("--save-tree", action=argparse.BooleanOptionalAction, default=False, help="Save the BitBirch tree")
-    final_round_parser.add_argument("--save-centroids", action=argparse.BooleanOptionalAction, default=True, help="Save centroids and cluster assignments")
+    final_round_parser.add_argument("--save-centroids", action=argparse.BooleanOptionalAction, default=False, help="Save centroids and cluster assignments")
     final_round_parser.add_argument("--slurm-mem", default=_config.SLURM_MEM_FINAL, help="SLURM memory allocation")
     final_round_parser.add_argument("--slurm-cpus", type=int, default=_config.SLURM_CPUS_FINAL, help="SLURM CPU count")
     final_round_parser.add_argument("--slurm-time", default=_config.SLURM_TIME, help="SLURM time limit")
