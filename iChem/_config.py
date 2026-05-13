@@ -1,1 +1,1 @@
-CPU_CORES = 8
+CPU_CORES = 64

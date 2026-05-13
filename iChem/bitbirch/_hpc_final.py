@@ -141,8 +141,20 @@ if __name__ == "__main__":
     parser.add_argument("--merge-criterion", type=str, default=_config.MERGE_CRITERION, help="Merge criterion")
     parser.add_argument("--reclustering-iterations", type=int, default=_config.RECLUSTERING_ITERATIONS_FINAL, help="Reclustering iterations")
     parser.add_argument("--extra-threshold", type=float, default=_config.RECLUSTERING_EXTRA_THRESHOLD, help="Extra threshold for reclustering")
-    parser.add_argument("--save-tree", action="store_true", default=False, help="Save the BitBirch tree")
-    parser.add_argument("--save-centroids", action="store_true", default=True, help="Save centroids and cluster assignments")
+    parser.add_argument(
+        "--save-tree",
+        dest="save_tree",
+        action="store_true",
+        default=False,
+        help="Save the BitBirch tree",
+    )
+    parser.add_argument(
+        "--save-centroids",
+        dest="save_centroids",
+        action="store_true",
+        default=False,
+        help="Save centroids and cluster assignments",
+    )
 
     args = parser.parse_args()
     main(args)
