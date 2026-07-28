@@ -13,6 +13,7 @@ from bblean.fingerprints import _get_fps_file_num
 
 from ..utils import binary_fps, load_smiles
 from . import _config
+from .zinc22_ids import pack_zinc22_uint64
 
 _BYTES_TO_GIB = 1 / 1024**3
 
@@ -69,10 +70,46 @@ def _save_bufs_and_mol_idxs(
             pickle.dump(mols_bfs[dtype], f)
 
 
+def _load_smiles_and_packed_zinc22_ids(smi_file: Path) -> tuple[list[str], list[int], int]:
+    """Load ``SMILES,ZINC_ID`` records, excluding malformed ID records.
+
+    The returned IDs are aligned with the returned SMILES.  Fingerprint errors
+    are filtered later using that same alignment.
+    """
+    opener = gz.open if smi_file.name.endswith(".smi.gz") else open
+    smiles: list[str] = []
+    packed_ids: list[int] = []
+    invalid_records = 0
+
+    with opener(smi_file, "rt") as file_handle:
+        for line_number, line in enumerate(file_handle, start=1):
+            record = line.strip()
+            if not record:
+                continue
+            try:
+                smiles_value, zinc_id = record.split(",", 1)
+                smiles_value = smiles_value.strip()
+                if not smiles_value:
+                    raise ValueError("empty SMILES")
+                packed_id = pack_zinc22_uint64(zinc_id.strip())
+            except ValueError as error:
+                invalid_records += 1
+                print(
+                    f"Skipping malformed SMILES/ZINC_ID record at "
+                    f"{smi_file}:{line_number}: {error}"
+                )
+                continue
+            smiles.append(smiles_value)
+            packed_ids.append(packed_id)
+
+    return smiles, packed_ids, invalid_records
+
+
 def main(args: argparse.Namespace) -> None:
     """Load SMILES files, generate fingerprints, perform initial clustering.
 
-    Uses global molecule indices to preserve molecule identity across batches.
+    Uses global molecule indices by default, or packed ZINC22 IDs when
+    ``--code-ids`` is supplied, to preserve molecule identity across batches.
     Saves results to the specified output directory.
     """
     start_time = time.perf_counter()
@@ -108,7 +145,12 @@ def main(args: argparse.Namespace) -> None:
             print(f"[{label}] Loading {smi_file}")
             is_smi_gz = smi_file.name.endswith('.smi.gz')
 
-            if smi_file.suffix == '.smi':
+            packed_zinc_ids: list[int] | None = None
+            if args.code_ids:
+                smiles, packed_zinc_ids, invalid_records = _load_smiles_and_packed_zinc22_ids(smi_file)
+                if invalid_records:
+                    print(f"[{label}] Skipped {invalid_records} malformed SMILES/ZINC_ID records")
+            elif smi_file.suffix == '.smi':
                 smiles = load_smiles(smi_file)
             elif is_smi_gz:
                 smiles = []
@@ -123,7 +165,14 @@ def main(args: argparse.Namespace) -> None:
             print(f"[{label}] Loaded {len(smiles)} SMILES from {smi_file}")
             idx_range = range(current_idx, current_idx + len(smiles))
             current_idx += len(smiles)
-            print(f"[{label}] Assigning global indices {idx_range.start} to {idx_range.stop - 1}")
+            if args.code_ids:
+                print(f"[{label}] Using packed ZINC22 IDs as molecule indices")
+            else:
+                print(f"[{label}] Assigning global indices {idx_range.start} to {idx_range.stop - 1}")
+
+            if not smiles:
+                print(f"[{label}] Warning: No valid input records in {smi_file}; skipping")
+                continue
 
             print(f"[{label}] Generating {args.fp_type} fingerprints ({args.n_bits} bits)")
             fps, invalid_ids = binary_fps(
@@ -136,12 +185,18 @@ def main(args: argparse.Namespace) -> None:
 
             if invalid_ids:
                 print(f"[{label}] Warning: Found {len(invalid_ids)} invalid SMILES in {smi_file}")
-                valid_indices = [idx for i, idx in enumerate(idx_range) if i not in invalid_ids]
+                source_indices = packed_zinc_ids if args.code_ids else idx_range
+                valid_indices = [idx for i, idx in enumerate(source_indices) if i not in invalid_ids]
                 print(f"[{label}] Retaining {len(valid_indices)} valid SMILES")
             else:
-                valid_indices = list(idx_range)
+                valid_indices = list(packed_zinc_ids if args.code_ids else idx_range)
 
             del smiles
+
+            if not valid_indices:
+                print(f"[{label}] Warning: No valid fingerprints in {smi_file}; skipping")
+                del fps
+                continue
 
             npy_path = output_dir / f"temp_fps_{label}.npy"
             np.save(npy_path, fps)
@@ -203,6 +258,12 @@ if __name__ == "__main__":
     parser.add_argument("--n-bits", type=int, default=_config.N_BITS, help="Number of bits")
     parser.add_argument("--reclustering-iterations", type=int, default=_config.RECLUSTERING_ITERATIONS_INITIAL, help="Reclustering iterations")
     parser.add_argument("--extra-threshold", type=float, default=_config.RECLUSTERING_EXTRA_THRESHOLD, help="Extra threshold for reclustering")
+    parser.add_argument(
+        "--code-ids",
+        action="store_true",
+        default=False,
+        help="Read SMILES,ZINC_ID records and use packed ZINC22 IDs as molecule indices",
+    )
 
     args = parser.parse_args()
     main(args)

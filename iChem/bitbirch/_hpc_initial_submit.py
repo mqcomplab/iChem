@@ -96,6 +96,7 @@ def _generate_initial_round_script(
 
                 files_str = " ".join(str(f) for f in file_batch)
 
+                code_ids_arg = " --code-ids" if params["code_ids"] else ""
                 cmd = (
                     f"python -m iChem.bitbirch._hpc_initial "
                     f"--smi-files {files_str} "
@@ -109,6 +110,7 @@ def _generate_initial_round_script(
                     f"--n-bits {params['n_bits']} "
                     f"--reclustering-iterations {params['reclustering_iterations']} "
                     f"--extra-threshold {params['extra_threshold']}"
+                    f"{code_ids_arg}"
                 )
 
                 f.write(f"cat > {job_script} <<'JOBEOF'\n")
@@ -155,6 +157,7 @@ def prepare_initial_round_jobs(
     result_base_dir: Path | None = None,
     max_jobs_per_script: int = _config.MAX_JOBS_PER_SCRIPT,
     verbose: bool = False,
+    code_ids: bool = False,
 ) -> list[Path]:
     r"""Prepare and generate initial round job submission script.
 
@@ -225,6 +228,7 @@ def prepare_initial_round_jobs(
         "n_bits": n_bits,
         "reclustering_iterations": reclustering_iterations,
         "extra_threshold": extra_threshold,
+        "code_ids": code_ids,
     }
 
     slurm_params = {
@@ -293,6 +297,12 @@ if __name__ == "__main__":
     )
     parser.add_argument("--verbose", action="store_true", help="Verbose output")
     parser.add_argument(
+        "--code-ids",
+        action="store_true",
+        default=False,
+        help="Read SMILES,ZINC_ID records and use packed ZINC22 IDs as molecule indices",
+    )
+    parser.add_argument(
         "--max-jobs-per-script",
         type=int,
         default=_config.MAX_JOBS_PER_SCRIPT,
@@ -317,4 +327,5 @@ if __name__ == "__main__":
         result_base_dir=args.result_base_dir,
         verbose=args.verbose,
         max_jobs_per_script=args.max_jobs_per_script,
+        code_ids=args.code_ids,
     )

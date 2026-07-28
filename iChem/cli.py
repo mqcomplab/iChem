@@ -121,6 +121,12 @@ def _build_parser() -> argparse.ArgumentParser:
     initial_round_parser.add_argument("--slurm-partition", default=_config.SLURM_PARTITION, help="SLURM partition (optional)")
     initial_round_parser.add_argument("--result-base-dir", type=Path, default=None, help="Base directory for results (optional)")
     initial_round_parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False)
+    initial_round_parser.add_argument(
+        "--code-ids",
+        action="store_true",
+        default=False,
+        help="Read SMILES,ZINC_ID records and use packed ZINC22 IDs as molecule indices",
+    )
 
     midsection_round_parser = subparsers.add_parser(
         "midsection-round", help="Run midsection round HPC clustering"
@@ -585,6 +591,7 @@ def _run_initial_round(args: argparse.Namespace) -> int:
         result_base_dir=args.result_base_dir,
         max_jobs_per_script=args.max_jobs_per_script,
         verbose=args.verbose,
+        code_ids=args.code_ids,
     )
 
     # Handle single or multiple scripts
