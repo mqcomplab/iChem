@@ -8,6 +8,10 @@ from collections import Counter, defaultdict
 from ..bitbirch.cluster import get_iSIM_clusters
 from ..bbreal import BBReal
 
+
+def _library_palette(library_names: list[str], palette_name: str = "tab10"):
+    return sns.color_palette(palette_name, n_colors=len(library_names))
+
 def clusters_pop_plot(clusters: list[int],
                       save_path: str = None,
                       ):
@@ -233,9 +237,7 @@ def bar_chart_library_comparison(values: list[Counter],
     n_clusters = len(values)
     x = np.arange(n_clusters)
 
-    # Choose a color palette with enough distinct colors
-    colors = sns.color_palette("tab10", n_colors=max(10, len(lib_names)))
-    colors = colors[:len(lib_names)]
+    colors = _library_palette(lib_names)
 
     bottoms = np.zeros(n_clusters, dtype=float)
     plt.figure(figsize=(10, 5))
@@ -318,6 +320,7 @@ def venn_overlap(
         venn_counts[membership] = value
 
     plt.figure(figsize=(7, 7))
+    colors = _library_palette(library_names)
 
     if n_libs == 2:
 
@@ -328,6 +331,8 @@ def venn_overlap(
                 venn_counts.get("11", 0),
             ),
             set_labels=library_names,
+            set_colors=tuple(colors),
+            alpha=0.6
         )
 
     else:
@@ -343,6 +348,8 @@ def venn_overlap(
                 venn_counts.get("111", 0),
             ),
             set_labels=library_names,
+            set_colors=tuple(colors),
+            alpha=0.6
         )
 
     plt.tight_layout()

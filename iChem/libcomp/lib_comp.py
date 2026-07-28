@@ -606,6 +606,7 @@ class LibComparison:
             sub_img_size=(250, 250),
             display_MCS: bool = True,
             save_path: str | None = None,
+            max_items: int | None = None,
     ):
         """
         Display molecules from a cluster with the maximum common
@@ -634,10 +635,23 @@ class LibComparison:
             mols_per_row=mols_per_row,
             sub_img_size=sub_img_size,
             legends=cluster_flags,
-            MSC=display_MCS,
+            MCS=display_MCS,
+            max_items=max_items if max_items is not None else 50,
         )
 
         if save_path:
-            img.save(save_path)
-        else:
-            return img
+            try:
+                img.save(save_path)
+                print(f"Saved to {save_path}")
+            except Exception as e:
+                print(f"Error saving image: {e}")
+                return None
+
+            try:
+                from PIL import Image
+                img = Image.open(save_path)
+            except Exception as e:
+                print(f"Error opening saved image: {e}")
+                img = None
+
+        return img

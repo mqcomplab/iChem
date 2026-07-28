@@ -254,3 +254,43 @@ class TestFingerprinterCLI(unittest.TestCase):
         self.assertEqual(result, 0)
         fps = np.load(output_file)
         self.assertEqual(fps.shape[0], 118)
+
+            def test_rewrite_smiles_by_cluster_npy_cli(self):
+                """Test rewriting SMILES from per-cluster .npy files."""
+                smiles_dir = self.temp_path / "smiles"
+                clusters_dir = self.temp_path / "clusters"
+                output_dir = self.temp_path / "rewritten"
+                smiles_dir.mkdir()
+                clusters_dir.mkdir()
+
+                smiles_file = smiles_dir / "molecules.smi"
+                smiles = ["C", "CC", "CCC", "CCCC", "CCCCC", "CCCCCC"]
+                with open(smiles_file, "w") as handle:
+                    for smi in smiles:
+                        handle.write(f"{smi}\n")
+
+                np.save(clusters_dir / "cluster_0.npy", np.array([0, 2, 5], dtype=np.int64))
+                np.save(clusters_dir / "cluster_1.npy", np.array([1, 3, 4], dtype=np.int64))
+
+                argv = [
+                    "rewrite-smiles-by-cluster-npy",
+                    "--clusters-dir", str(clusters_dir),
+                    "--smiles-dir", str(smiles_dir),
+                    "--output-dir", str(output_dir),
+                    "--num-workers", "2",
+                ]
+
+                result = main(argv)
+
+                self.assertEqual(result, 0)
+
+                cluster_0 = output_dir / "cluster_0.smi"
+                cluster_1 = output_dir / "cluster_1.smi"
+                self.assertTrue(cluster_0.exists())
+                self.assertTrue(cluster_1.exists())
+
+                with open(cluster_0) as handle:
+                    self.assertEqual(handle.read().splitlines(), ["C", "CCC", "CCCCCC"])
+
+                with open(cluster_1) as handle:
+                    self.assertEqual(handle.read().splitlines(), ["CC", "CCCC", "CCCCC"])

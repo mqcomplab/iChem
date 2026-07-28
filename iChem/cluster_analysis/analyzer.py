@@ -9,7 +9,7 @@ import seaborn as sns #type: ignore
 from bblean.similarity import jt_isim, jt_sim_packed #type: ignore
 
 from ..utils import binary_fps
-from ..visualization.mol_images import smiles_to_grid_image, MSC_image #type: ignore
+from ..visualization.mol_images import smiles_to_grid_image, MCS_image #type: ignore
 from rdkit import Chem #type: ignore
 
 

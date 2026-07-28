@@ -1,7 +1,7 @@
 import numpy as np
 import unittest
 from iChem.iSIM.real import pair_jt, pair_rr, pair_sm, process_matrix, calculate_isim_real
-from iChem.utils import minmax_norm, real_fps
+from iChem.utils.utils import minmax_norm, real_fps
 import pandas as pd
 
 class TestPairwiseSimilarityFunctions(unittest.TestCase):

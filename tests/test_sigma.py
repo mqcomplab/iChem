@@ -5,7 +5,7 @@ fps = np.load('tests/data/ECFP4_fps.npy')
 
 def test_sigma():
     from iChem.iSIM.sigma import stratified_sigma, get_stdev_russell_fast
-    from iChem.utils import pairwise_average, rdkit_pairwise_sim
+    from iChem.utils.utils import pairwise_average, rdkit_pairwise_sim
 
     # Test stratified sigma
     value = stratified_sigma(fps, n=50, n_ary="JT")

@@ -1,4 +1,4 @@
-import iChem.utils as utils
+import iChem.utils.utils as utils
 import iChem.iSIM as iSIM
 from rdkit import DataStructs # type: ignore
 import pytest # type: ignore

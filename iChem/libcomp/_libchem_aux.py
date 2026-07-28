@@ -137,8 +137,7 @@ def combo_counts(flags: list, library_names: list[str] | None = None) -> tuple[d
 
     return counts, mapping
 
-def composition_per_cluster(clustered_flags: list,
-                            top = 20) -> list[Counter]:
+def composition_per_cluster(clustered_flags: list) -> list[Counter]:
     """Return the composition of each cluster as a list of Counters.
 
     Parameters
@@ -153,8 +152,6 @@ def composition_per_cluster(clustered_flags: list,
         List of Counter objects, one per cluster, with counts of library
         names in that cluster.
     """
-    clustered_flags = clustered_flags[:top]
-
     counts_per_cluster = []
     for cluster in clustered_flags:
         counter = Counter(cluster)

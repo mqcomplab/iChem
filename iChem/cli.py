@@ -19,7 +19,14 @@ from .bitbirch import _config
 from .utils.fingerprints import binary_fps, count_fps, real_fps
 from .cluster_sampling import sample_clusters
 from .cluster_sampling.sample_from_cluster_files import sample_from_cluster_files
-from .cluster_analysis.rewrite_smiles import rewrite_smiles_by_cluster, find_first_missing_cluster
+from .cluster_analysis.rewrite_smiles import (
+    rewrite_smiles_by_cluster,
+    rewrite_smiles_by_cluster_from_npy_dir,
+    rewrite_single_cluster_from_npy,
+    prepare_rewrite_smiles_npy_jobs,
+    find_first_missing_cluster,
+    find_first_missing_cluster_from_files,
+)
 from ._cli import load_smiles, get_smi_files, get_output_path
 import numpy as np
 
@@ -309,6 +316,136 @@ def _build_parser() -> argparse.ArgumentParser:
     rewrite_smiles_parser.add_argument(
         "--start-at", type=int, default=0,
         help="Cluster index to start processing from (default: 0)"
+    )
+
+    rewrite_smiles_npy_parser = subparsers.add_parser(
+        "rewrite-smiles-by-cluster-npy", help="Reorganize SMILES files by cluster using cluster_<id>.npy files"
+    )
+    rewrite_smiles_npy_parser.add_argument(
+        "--clusters-dir", type=Path, required=True,
+        help="Directory containing cluster_<id>.npy files"
+    )
+    rewrite_smiles_npy_parser.add_argument(
+        "--smiles-dir", type=Path, required=True,
+        help="Directory containing input SMILES files (*.smi or *.smi.gz)"
+    )
+    rewrite_smiles_npy_parser.add_argument(
+        "--output-dir", type=Path, required=True,
+        help="Directory to write cluster-organized SMILES files"
+    )
+    rewrite_smiles_npy_parser.add_argument(
+        "--smiles-per-file", type=int, default=1_000_000,
+        help="Number of SMILES per input file (default: 1M)"
+    )
+    rewrite_smiles_npy_parser.add_argument(
+        "--compressed", action=argparse.BooleanOptionalAction, default=False,
+        help="Write gzipped files (.smi.gz) instead of plain text"
+    )
+    rewrite_smiles_npy_parser.add_argument(
+        "--num-workers", type=int, default=8,
+        help="Number of parallel processes (default: 8)"
+    )
+    rewrite_smiles_npy_parser.add_argument(
+        "--start-at", type=int, default=0,
+        help="Cluster index to start processing from (default: 0)"
+    )
+    rewrite_smiles_npy_parser.add_argument(
+        "--write-database-ids", action=argparse.BooleanOptionalAction, default=False,
+        help="Write ordered database IDs alongside cluster SMILES outputs"
+    )
+
+    rewrite_smiles_single_npy_parser = subparsers.add_parser(
+        "rewrite-smiles-single-cluster-npy",
+        help="Reorganize SMILES for one cluster_<id>.npy file"
+    )
+    rewrite_smiles_single_npy_parser.add_argument(
+        "--cluster-file", type=Path, required=True,
+        help="Path to one cluster_<id>.npy file"
+    )
+    rewrite_smiles_single_npy_parser.add_argument(
+        "--smiles-dir", type=Path, required=True,
+        help="Directory containing input SMILES files (*.smi or *.smi.gz)"
+    )
+    rewrite_smiles_single_npy_parser.add_argument(
+        "--output-dir", type=Path, required=True,
+        help="Directory to write cluster-organized SMILES files"
+    )
+    rewrite_smiles_single_npy_parser.add_argument(
+        "--smiles-per-file", type=int, default=1_000_000,
+        help="Number of SMILES per input file (default: 1M)"
+    )
+    rewrite_smiles_single_npy_parser.add_argument(
+        "--compressed", action=argparse.BooleanOptionalAction, default=False,
+        help="Write gzipped files (.smi.gz) instead of plain text"
+    )
+    rewrite_smiles_single_npy_parser.add_argument(
+        "--write-database-ids", action=argparse.BooleanOptionalAction, default=False,
+        help="Write ordered database IDs alongside cluster SMILES outputs"
+    )
+    rewrite_smiles_single_npy_parser.add_argument(
+        "--overwrite", action=argparse.BooleanOptionalAction, default=False,
+        help="Overwrite existing cluster output files"
+    )
+
+    rewrite_smiles_submit_parser = subparsers.add_parser(
+        "rewrite-smiles-by-cluster-npy-submit",
+        help="Generate SLURM submission script to rewrite one job per cluster_<id>.npy"
+    )
+    rewrite_smiles_submit_parser.add_argument(
+        "--clusters-dir", type=Path, required=True,
+        help="Directory containing cluster_<id>.npy files"
+    )
+    rewrite_smiles_submit_parser.add_argument(
+        "--smiles-dir", type=Path, required=True,
+        help="Directory containing input SMILES files (*.smi or *.smi.gz)"
+    )
+    rewrite_smiles_submit_parser.add_argument(
+        "--output-dir", type=Path, required=True,
+        help="Directory to write cluster-organized SMILES files"
+    )
+    rewrite_smiles_submit_parser.add_argument(
+        "--submit-dir", type=Path, default=None,
+        help="Directory to write submission script and logs (default: output-dir)"
+    )
+    rewrite_smiles_submit_parser.add_argument(
+        "--smiles-per-file", type=int, default=1_000_000,
+        help="Number of SMILES per input file (default: 1M)"
+    )
+    rewrite_smiles_submit_parser.add_argument(
+        "--compressed", action=argparse.BooleanOptionalAction, default=True,
+        help="Write gzipped files (.smi.gz)"
+    )
+    rewrite_smiles_submit_parser.add_argument(
+        "--write-database-ids", action=argparse.BooleanOptionalAction, default=False,
+        help="Write ordered database IDs alongside cluster SMILES outputs"
+    )
+    rewrite_smiles_submit_parser.add_argument(
+        "--overwrite", action=argparse.BooleanOptionalAction, default=False,
+        help="Overwrite existing cluster output files"
+    )
+    rewrite_smiles_submit_parser.add_argument(
+        "--max-jobs-per-script", type=int, default=_config.MAX_JOBS_PER_SCRIPT,
+        help="Maximum number of jobs per submission script"
+    )
+    rewrite_smiles_submit_parser.add_argument(
+        "--slurm-mem", default=_config.SLURM_MEM_INITIAL,
+        help="SLURM memory allocation"
+    )
+    rewrite_smiles_submit_parser.add_argument(
+        "--slurm-cpus", type=int, default=_config.SLURM_CPUS_INITIAL,
+        help="SLURM CPU count"
+    )
+    rewrite_smiles_submit_parser.add_argument(
+        "--slurm-time", default=_config.SLURM_TIME,
+        help="SLURM time limit"
+    )
+    rewrite_smiles_submit_parser.add_argument(
+        "--slurm-partition", default=_config.SLURM_PARTITION,
+        help="SLURM partition (optional)"
+    )
+    rewrite_smiles_submit_parser.add_argument(
+        "--conda-env", default="iChem",
+        help="Conda environment to activate in each submitted job"
     )
 
     sample_from_cluster_files_parser = subparsers.add_parser(
@@ -757,6 +894,109 @@ def _run_rewrite_smiles_by_cluster(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_rewrite_smiles_by_cluster_npy(args: argparse.Namespace) -> int:
+    print(f"[rewrite-smiles-by-cluster-npy] Started at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    sys.stdout.flush()
+    t0 = time.perf_counter()
+
+    if not args.clusters_dir.exists():
+        print(f"✗ Error: Cluster directory not found: {args.clusters_dir}")
+        return 1
+
+    cluster_files = sorted(args.clusters_dir.glob("cluster_*.npy"), key=lambda path: int(path.stem.split("_")[-1]))
+    if not cluster_files:
+        print(f"✗ Error: No cluster_*.npy files found in {args.clusters_dir}")
+        return 1
+
+    print(f"Found {len(cluster_files)} cluster files")
+    sys.stdout.flush()
+
+    start_at = args.start_at
+    if args.output_dir.exists() and start_at == 0:
+        first_missing = find_first_missing_cluster_from_files(
+            str(args.output_dir), cluster_files, args.compressed
+        )
+        last_cluster_id = int(cluster_files[-1].stem.split("_")[-1])
+        if first_missing <= last_cluster_id:
+            print(f"Output directory exists. Found clusters up to {first_missing - 1} completed.")
+            print(f"Resuming from cluster {first_missing}")
+            sys.stdout.flush()
+            start_at = first_missing
+
+    print(f"Reorganizing SMILES files by cluster from {start_at}...")
+    sys.stdout.flush()
+    rewrite_smiles_by_cluster_from_npy_dir(
+        clusters_dir=str(args.clusters_dir),
+        input_smiles_dir=str(args.smiles_dir),
+        output_dir=str(args.output_dir),
+        smiles_per_file=args.smiles_per_file,
+        compressed=args.compressed,
+        num_workers=args.num_workers,
+        start_at=start_at,
+        write_database_ids=args.write_database_ids,
+    )
+
+    elapsed = time.perf_counter() - t0
+    print(f"✓ Reorganization completed in {elapsed:.2f}s")
+    sys.stdout.flush()
+    print(f"[rewrite-smiles-by-cluster-npy] Finished at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    sys.stdout.flush()
+    return 0
+
+
+def _run_rewrite_smiles_single_cluster_npy(args: argparse.Namespace) -> int:
+    print(f"[rewrite-smiles-single-cluster-npy] Started at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    sys.stdout.flush()
+    t0 = time.perf_counter()
+
+    rewrite_single_cluster_from_npy(
+        cluster_file=str(args.cluster_file),
+        input_smiles_dir=str(args.smiles_dir),
+        output_dir=str(args.output_dir),
+        smiles_per_file=args.smiles_per_file,
+        compressed=args.compressed,
+        write_database_ids=args.write_database_ids,
+        overwrite=args.overwrite,
+    )
+
+    elapsed = time.perf_counter() - t0
+    print(f"✓ Cluster rewrite completed in {elapsed:.2f}s")
+    sys.stdout.flush()
+    print(f"[rewrite-smiles-single-cluster-npy] Finished at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    sys.stdout.flush()
+    return 0
+
+
+def _run_rewrite_smiles_by_cluster_npy_submit(args: argparse.Namespace) -> int:
+    script_path = prepare_rewrite_smiles_npy_jobs(
+        clusters_dir=str(args.clusters_dir),
+        input_smiles_dir=str(args.smiles_dir),
+        output_dir=str(args.output_dir),
+        submit_dir=str(args.submit_dir) if args.submit_dir else None,
+        smiles_per_file=args.smiles_per_file,
+        compressed=args.compressed,
+        write_database_ids=args.write_database_ids,
+        overwrite=args.overwrite,
+        max_jobs_per_script=args.max_jobs_per_script,
+        slurm_mem=args.slurm_mem,
+        slurm_cpus=args.slurm_cpus,
+        slurm_time=args.slurm_time,
+        slurm_partition=args.slurm_partition,
+        conda_env=args.conda_env,
+    )
+
+    if isinstance(script_path, list):
+        print(f"\n✓ Generated {len(script_path)} rewrite submission scripts:")
+        for i, path in enumerate(script_path, 1):
+            print(f"  {i}. bash {Path(path).resolve()}")
+        print(f"\nRun each script to submit jobs in batches of up to {args.max_jobs_per_script} per script")
+    else:
+        print(f"\n✓ Generated rewrite submission script: {script_path}")
+        print("Run the following to submit one job per cluster file:")
+        print(f"\n  bash {Path(script_path).resolve()}\n")
+    return 0
+
+
 def _run_sample_from_cluster_files(args: argparse.Namespace) -> int:
     print(f"[sample-from-cluster-files] Started at {time.strftime('%Y-%m-%d %H:%M:%S')}")
     sys.stdout.flush()
@@ -849,6 +1089,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_cluster_sampling(args)
     if args.command == "rewrite-smiles-by-cluster":
         return _run_rewrite_smiles_by_cluster(args)
+    if args.command == "rewrite-smiles-by-cluster-npy":
+        return _run_rewrite_smiles_by_cluster_npy(args)
+    if args.command == "rewrite-smiles-single-cluster-npy":
+        return _run_rewrite_smiles_single_cluster_npy(args)
+    if args.command == "rewrite-smiles-by-cluster-npy-submit":
+        return _run_rewrite_smiles_by_cluster_npy_submit(args)
     if args.command == "sample-from-cluster-files":
         return _run_sample_from_cluster_files(args)
     parser.error("Unknown command")
