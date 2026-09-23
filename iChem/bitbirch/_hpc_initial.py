@@ -71,9 +71,10 @@ def _save_bufs_and_mol_idxs(
 
 
 def _load_smiles_and_packed_zinc22_ids(smi_file: Path) -> tuple[list[str], list[int], int]:
-    """Load ``SMILES,ZINC_ID`` records, excluding malformed ID records.
+    """Load SMILES/ZINC_ID records, excluding malformed ID records.
 
-    The returned IDs are aligned with the returned SMILES.  Fingerprint errors
+    Comma-, tab-, and whitespace-separated two-column records are supported.
+    The returned IDs are aligned with the returned SMILES; fingerprint errors
     are filtered later using that same alignment.
     """
     opener = gz.open if smi_file.name.endswith(".smi.gz") else open
@@ -87,7 +88,10 @@ def _load_smiles_and_packed_zinc22_ids(smi_file: Path) -> tuple[list[str], list[
             if not record:
                 continue
             try:
-                smiles_value, zinc_id = record.split(",", 1)
+                if "," in record:
+                    smiles_value, zinc_id = record.split(",", 1)
+                else:
+                    smiles_value, zinc_id = record.split(None, 1)
                 smiles_value = smiles_value.strip()
                 if not smiles_value:
                     raise ValueError("empty SMILES")
@@ -262,7 +266,7 @@ if __name__ == "__main__":
         "--code-ids",
         action="store_true",
         default=False,
-        help="Read SMILES,ZINC_ID records and use packed ZINC22 IDs as molecule indices",
+        help="Read SMILES and ZINC_ID records (comma, tab, or space separated) as packed molecule indices",
     )
 
     args = parser.parse_args()

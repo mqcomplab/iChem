@@ -258,17 +258,20 @@ class LibComparison:
         assert tracker == n_total, "Mismatch in total molecule count and fingerprint tracking."
 
         # Save temp_fingerprint file
-        np.save("temp_fingerprints.npy", fps_combined)
+        rand_int = np.random.randint(0, 1e6)
+        temp_fp_file = f"temp_fingerprints_{rand_int}.npy"
+        np.save(temp_fp_file, fps_combined)
 
         # Cluster
-        cluster_ids = cluster(file_path="temp_fingerprints.npy",
+        cluster_ids = cluster(file_path=temp_fp_file,
                 threshold=threshold,
                 branching_factor=branching_factor,
-                merge_criterion=merge_criterion,)
+                merge_criterion=merge_criterion,
+                force_sequential=True,)
 
         # Delete temp file
         import os
-        os.remove("temp_fingerprints.npy")
+        os.remove(temp_fp_file)
 
         cluster_flags = self._group_flags_by_cluster(cluster_ids, flags_list)
         cluster_sizes = self._group_flags_by_cluster(cluster_ids, sizes_list)
@@ -580,6 +583,61 @@ class LibComparison:
             library_names=library_names,
             percentages=percentages,
             save_path=save_path
+        )
+
+    def pie_chart(
+            self,
+            save_path: str | None = None,
+            representatives_only: bool = REPRESENTATIVES_ONLY,
+            percentages: bool = True,
+    ) -> None:
+        """Plot each library's exclusive and shared chemical space.
+
+        A library receives one panel.  Its ``Exclusive`` slice contains its
+        representatives (or their represented populations) in clusters that
+        contain no other library.  Every other slice identifies the other
+        library or libraries present in the cluster.
+
+        Set ``percentages=False`` to annotate slices with their representative
+        or represented-population count instead of their percentage.
+        """
+        if self.cluster_results is None:
+            raise ValueError(
+                "No clustering results available. Please run cluster_libraries() first."
+            )
+
+        from ..visualization.plots import pie_overlap
+
+        library_names = list(self.libraries.keys())
+        composition_key = (
+            "cluster_compositions"
+            if representatives_only
+            else "cluster_compositions_weighted"
+        )
+        overlap_by_library = {
+            library: defaultdict(float) for library in library_names
+        }
+
+        for composition in self.cluster_results[composition_key]:
+            cluster_libraries = [
+                library for library in library_names if library in composition
+            ]
+            for library in cluster_libraries:
+                other_libraries = [
+                    other for other in cluster_libraries if other != library
+                ]
+                label = (
+                    "Exclusive"
+                    if not other_libraries
+                    else "Shared with " + " + ".join(other_libraries)
+                )
+                overlap_by_library[library][label] += composition[library]
+
+        pie_overlap(
+            overlap_by_library=overlap_by_library,
+            library_names=library_names,
+            percentages=percentages,
+            save_path=save_path,
         )
 
     def cluster_population_plot(self,

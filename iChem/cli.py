@@ -125,7 +125,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--code-ids",
         action="store_true",
         default=False,
-        help="Read SMILES,ZINC_ID records and use packed ZINC22 IDs as molecule indices",
+        help="Read SMILES and ZINC_ID records (comma, tab, or space separated) as packed molecule indices",
     )
 
     midsection_round_parser = subparsers.add_parser(

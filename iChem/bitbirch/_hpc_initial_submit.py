@@ -300,7 +300,7 @@ if __name__ == "__main__":
         "--code-ids",
         action="store_true",
         default=False,
-        help="Read SMILES,ZINC_ID records and use packed ZINC22 IDs as molecule indices",
+        help="Read SMILES and ZINC_ID records (comma, tab, or space separated) as packed molecule indices",
     )
     parser.add_argument(
         "--max-jobs-per-script",

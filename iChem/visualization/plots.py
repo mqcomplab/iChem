@@ -180,6 +180,109 @@ def clusters_pop_isim_real_plot(bbreal_obj: BBReal,
     else:
         plt.show()
 
+def pie_overlap(
+    overlap_by_library: dict[str, dict[str, float]],
+    library_names: list[str],
+    percentages: bool = True,
+    save_path: str | None = None,
+):
+    """Plot exclusive and shared chemical-space proportions per library.
+
+    ``overlap_by_library`` maps each library to slice labels and their masses.
+    Slice labels are ``Exclusive`` or ``Shared with ...``; values may be
+    representative counts or represented-population weights. Set
+    ``percentages=False`` to annotate wedges and legends with their raw
+    masses. Wedges smaller than 5% are listed in the legend instead of being
+    annotated inside the pie to avoid overlapping text.
+    """
+    n_libraries = len(library_names)
+    if n_libraries == 0:
+        raise ValueError("At least one library is required for a pie chart.")
+
+    n_columns = min(n_libraries, 2)
+    n_rows = int(np.ceil(n_libraries / n_columns))
+    fig, axes = plt.subplots(
+        n_rows,
+        n_columns,
+        figsize=(6 * n_columns, 5 * n_rows),
+        squeeze=False,
+    )
+    def slice_key(library, label):
+        if label == "Exclusive":
+            return ("Exclusive",)
+        participating_libraries = [library]
+        participating_libraries.extend(
+            label.removeprefix("Shared with ").split(" + ")
+        )
+        return tuple(sorted(participating_libraries))
+
+    slice_keys = {slice_key(library, label)
+                  for library in library_names
+                  for label in overlap_by_library.get(library, {})}
+    ordered_slice_keys = sorted(
+        slice_keys,
+        key=lambda key: (key != ("Exclusive",), key),
+    )
+    slice_colors = dict(zip(
+        ordered_slice_keys,
+        sns.color_palette("colorblind", n_colors=len(ordered_slice_keys)),
+    ))
+
+    for ax, library in zip(axes.flat, library_names):
+        counts = overlap_by_library.get(library, {})
+        labels = list(counts)
+        values = list(counts.values())
+
+        if not values or not any(values):
+            ax.text(0.5, 0.5, "No chemical space", ha="center", va="center")
+            ax.set_title(library)
+            ax.set_axis_off()
+            continue
+
+        colors = [slice_colors[slice_key(library, label)] for label in labels]
+        total = sum(values)
+        minimum_annotation_percentage = 5.0
+
+        def annotation(percentage):
+            if percentage < minimum_annotation_percentage:
+                return ""
+            if percentages:
+                return f"{percentage:.1f}%"
+            return f"{percentage * total / 100:g}"
+
+        def legend_label(label, value):
+            percentage = value / total * 100
+            if percentages:
+                return f"{label} ({percentage:.1f}%)"
+            return f"{label} ({value:g})"
+
+        wedges, _, _ = ax.pie(
+            values,
+            colors=colors[:len(labels)],
+            autopct=annotation,
+            startangle=90,
+            pctdistance=0.68,
+        )
+        ax.set_title(library)
+        ax.axis("equal")
+        ax.legend(
+            wedges,
+            [legend_label(label, value) for label, value in zip(labels, values)],
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.05),
+            fontsize=8,
+        )
+
+    for ax in axes.flat[n_libraries:]:
+        ax.set_visible(False)
+
+    fig.tight_layout(h_pad=4.0)
+    if save_path:
+        fig.savefig(save_path, dpi=400, bbox_inches="tight")
+    else:
+        plt.show()
+    plt.close(fig)
+
 def pie_chart_mixed_clusters(counts: dict,
                              save_path: str = None):
     """Generate a pie chart of mixed cluster compositions.

@@ -347,13 +347,25 @@ def _centroid_like_sampling_sequential(clusters: list[list[int]], centroids: np.
                 else:
                     random_sample = np.array(cluster)
                 cluster_smiles = [smiles[idx] for idx in random_sample] if smiles else None
-                cluster_fps = binary_fps(cluster_smiles, fp_type=fp_type, n_bits=n_bits)
+                cluster_fps = binary_fps(
+                    cluster_smiles,
+                    fp_type=fp_type,
+                    n_bits=n_bits,
+                    return_invalid=False,
+                    packed=True,
+                )
                 similarities = jt_sim_packed(cluster_fps, centroid)
                 closest_idx = np.argmax(similarities)
                 centroid_like_list.append(random_sample[closest_idx])
             else:
                 cluster_smiles = [smiles[idx] for idx in cluster] if smiles else None
-                cluster_fps = binary_fps(cluster_smiles, fp_type=fp_type, n_bits=n_bits)
+                cluster_fps = binary_fps(
+                    cluster_smiles,
+                    fp_type=fp_type,
+                    n_bits=n_bits,
+                    return_invalid=False,
+                    packed=True,
+                )
                 similarities = jt_sim_packed(cluster_fps, centroid)
                 closest_idx = np.argmax(similarities)
                 centroid_like_list.append(cluster[closest_idx])
@@ -694,7 +706,7 @@ def sample_clusters(clusters,
     # Load clusters: either path or direct list
     if isinstance(clusters, list):
         pass  # Already a list
-    elif isinstance(clusters, str):
+    elif isinstance(clusters, (str, Path)):
         clusters_path = Path(clusters)
         if clusters_path.is_file():
             clusters = pkl.load(open(clusters_path, 'rb'))
